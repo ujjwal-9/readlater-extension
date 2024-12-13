@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Do Read Later",
+  "version": "1.0",
+  "description": "Save pages to read later.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["*://*/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png",
+      "256": "icons/icon-256.png"
+    }
+  },
+  "icons": {
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png"
+  }
+}
