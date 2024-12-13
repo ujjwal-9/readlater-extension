@@ -3,7 +3,7 @@
   "name": "Do Read Later",
   "version": "1.0",
   "description": "Save pages to read later.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "tabs", "commands", "system.display"],
   "host_permissions": ["*://*/*"],
   "action": {
     "default_popup": "popup.html",
@@ -11,11 +11,40 @@
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png",
       "256": "icons/icon-256.png"
-    }
+    },
+    "theme_icons": [
+      {
+        "light": "icons/icon-48.png",
+        "dark": "icons/icon-48-dark.png",
+        "size": 48
+      },
+      {
+        "light": "icons/icon-128.png",
+        "dark": "icons/icon-128-dark.png",
+        "size": 128
+      },
+      {
+        "light": "icons/icon-256.png",
+        "dark": "icons/icon-256-dark.png",
+        "size": 256
+      }
+    ]
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "icons": {
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png",
     "256": "icons/icon-256.png"
+  },
+  "commands": {
+    "save-page": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "Save current page to Read Later"
+    }
   }
 }
