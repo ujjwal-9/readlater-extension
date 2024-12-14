@@ -155,6 +155,28 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
+// Function to save the reading list to Chrome sync storage
+function saveReadingList() {
+    const readingList = []; // Collect your reading list items here
+    // Example: readingList.push({ title: 'Example Title', url: 'http://example.com' });
+
+    chrome.storage.sync.set({ readingList: readingList }, function() {
+        console.log('Reading list saved to sync storage.');
+    });
+}
+
+// Function to load the reading list from Chrome sync storage
+function loadReadingList() {
+    chrome.storage.sync.get(['readingList'], function(result) {
+        const readingList = result.readingList || [];
+        // Populate your reading list UI with the items
+        console.log('Reading list loaded from sync storage:', readingList);
+    });
+}
+
+// Call loadReadingList on script load to populate the UI
+loadReadingList();
+
 function saveCurrentPage() {
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
     const currentTab = tabs[0];
@@ -217,29 +239,36 @@ function loadItems() {
       favicon.className = 'site-icon';
       
       let faviconUrl;
+      let url;
       try {
-        const url = new URL(item.url);
-        faviconUrl = `${url.protocol}//${url.hostname}/favicon.ico`;
-        favicon.src = faviconUrl;
+        url = new URL(item.url);
+        // Check if the favicon is already cached
+        const cachedFavicon = localStorage.getItem(`favicon-${url.hostname}`);
+        if (cachedFavicon) {
+          favicon.src = cachedFavicon; // Use cached favicon
+        } else {
+          faviconUrl = `${url.protocol}//${url.hostname}/favicon.ico`;
+          favicon.src = faviconUrl;
+        }
       } catch (err) {
         // If URL is invalid, hide the favicon
         favicon.style.display = 'none';
       }
       
       // Fallback to Google's service if the direct favicon fails
-      if (faviconUrl) {
+      favicon.onerror = function() {
+        // Attempt to fetch from Google's favicon service
+        const googleFaviconUrl = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
+        favicon.src = googleFaviconUrl;
         favicon.onerror = function() {
-          try {
-            const url = new URL(item.url);
-            favicon.src = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
-            favicon.onerror = function() {
-              favicon.style.display = 'none';
-            };
-          } catch (err) {
-            favicon.style.display = 'none';
-          }
+          favicon.style.display = 'none'; // Hide if still fails
         };
-      }
+        // Cache the Google favicon
+        favicon.onload = function() {
+          localStorage.setItem(`favicon-${url.hostname}`, googleFaviconUrl);
+        };
+      };
+
       div.appendChild(favicon);
       
       const link = document.createElement('a');
@@ -278,4 +307,4 @@ function updateBadge() {
     });
     chrome.action.setBadgeBackgroundColor({ color: '#666666' });
   });
-} 
+}
