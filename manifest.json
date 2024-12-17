@@ -3,8 +3,7 @@
   "name": "Do Read Later",
   "version": "1.0",
   "description": "Save pages to read later.",
-  "permissions": ["storage", "activeTab", "tabs", "commands", "system.display"],
-  "host_permissions": ["*://*/*"],
+  "permissions": ["storage", "activeTab", "tabs", "commands"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

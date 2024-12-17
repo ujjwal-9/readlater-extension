@@ -104,45 +104,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const processItems = items.map(item => {
           if (currentUrls.has(item.url)) return null;
 
-          return new Promise((resolve) => {
-            // Create basic item structure
-            const newItem = {
-              url: item.url,
-              title: item.title || '',
-              date: item.date || new Date().toISOString()
-            };
-
-            // If no title, fetch it from the webpage
-            if (!newItem.title) {
-              fetch(item.url)
-                .then(response => response.text())
-                .then(html => {
-                  const doc = new DOMParser().parseFromString(html, 'text/html');
-                  newItem.title = doc.title || item.url;
-                  resolve(newItem);
-                })
-                .catch(() => {
-                  newItem.title = item.url;
-                  resolve(newItem);
-                });
-            } else {
-              resolve(newItem);
-            }
-          });
+          return {
+            url: item.url,
+            title: item.url, // Just use the URL as title
+            date: item.date || new Date().toISOString()
+          };
         }).filter(Boolean);
 
         // Wait for all items to be processed
-        Promise.all(processItems).then(newItems => {
-          const validItems = newItems.filter(Boolean);
-          const updatedList = [...currentList, ...validItems];
-          
-          chrome.storage.local.set({
-            readingList: updatedList
-          }, function() {
-            loadItems();
-            updateBadge();
-            e.target.value = ''; // Reset file input
-          });
+        chrome.storage.local.set({
+          readingList: [...currentList, ...processItems]
+        }, function() {
+          loadItems();
+          updateBadge();
+          e.target.value = ''; // Reset file input
         });
       });
     };
@@ -238,36 +213,28 @@ function loadItems() {
       const favicon = document.createElement('img');
       favicon.className = 'site-icon';
       
-      let faviconUrl;
       let url;
       try {
         url = new URL(item.url);
         // Check if the favicon is already cached
         const cachedFavicon = localStorage.getItem(`favicon-${url.hostname}`);
         if (cachedFavicon) {
-          favicon.src = cachedFavicon; // Use cached favicon
+          favicon.src = cachedFavicon;
         } else {
-          faviconUrl = `${url.protocol}//${url.hostname}/favicon.ico`;
-          favicon.src = faviconUrl;
+          // Use Google's favicon service directly
+          const googleFaviconUrl = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
+          favicon.src = googleFaviconUrl;
+          favicon.onload = function() {
+            localStorage.setItem(`favicon-${url.hostname}`, googleFaviconUrl);
+          };
         }
+        
+        favicon.onerror = function() {
+          favicon.style.display = 'none';
+        };
       } catch (err) {
-        // If URL is invalid, hide the favicon
         favicon.style.display = 'none';
       }
-      
-      // Fallback to Google's service if the direct favicon fails
-      favicon.onerror = function() {
-        // Attempt to fetch from Google's favicon service
-        const googleFaviconUrl = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
-        favicon.src = googleFaviconUrl;
-        favicon.onerror = function() {
-          favicon.style.display = 'none'; // Hide if still fails
-        };
-        // Cache the Google favicon
-        favicon.onload = function() {
-          localStorage.setItem(`favicon-${url.hostname}`, googleFaviconUrl);
-        };
-      };
 
       div.appendChild(favicon);
       
