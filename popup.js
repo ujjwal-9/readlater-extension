@@ -29,18 +29,39 @@ function cacheIconElements() {
   });
 }
 
+// Add memoization for frequently used DOM elements
+const DOM = {
+  elements: new Map(),
+  get(id) {
+    if (!this.elements.has(id)) {
+      this.elements.set(id, document.getElementById(id));
+    }
+    return this.elements.get(id);
+  },
+  clear() {
+    this.elements.clear();
+  }
+};
+
 // Core initialization
-document.addEventListener('DOMContentLoaded', function() {
-  cacheIconElements();
-  loadItems();
-  updateBadge();
-  updateTheme();
+document.addEventListener('DOMContentLoaded', async function() {
+  try {
+    cacheIconElements();
+    
+    // Update theme and icon immediately
+    await updateTheme();
+    
+    loadItems();
+    updateBadge();
 
-  // Theme change listener
-  window.matchMedia('(prefers-color-scheme: dark)')
-    .addEventListener('change', updateTheme);
+    // Theme change listener
+    window.matchMedia('(prefers-color-scheme: dark)')
+      .addEventListener('change', updateTheme);
 
-  setupEventListeners();
+    setupEventListeners();
+  } catch (error) {
+    console.error('Error during initialization:', error);
+  }
 });
 
 function setupEventListeners() {
@@ -79,17 +100,19 @@ function setupEventListeners() {
 }
 
 // Theme Management
-function updateTheme() {
+async function updateTheme() {
   const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
   
-  chrome.storage.local.set({ isDarkMode }, function() {
-    chrome.runtime.sendMessage({ type: 'themeChanged', isDarkMode });
+  try {
+    // First update storage
+    await chrome.storage.local.set({ isDarkMode });
     
-    chrome.action.setBadgeBackgroundColor({ 
-      color: isDarkMode ? '#9aa0a6' : '#666666'
+    // Notify background script to update icon
+    await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: 'themeChanged', isDarkMode }, resolve);
     });
 
-    // Update all cached icon elements
+    // Update all cached icon elements in popup
     Object.entries(iconElements).forEach(([key, elements]) => {
       const newSrc = key === 'icon' ?
         `icons/icon-256${isDarkMode ? '-dark' : ''}.png` :
@@ -101,7 +124,9 @@ function updateTheme() {
         }
       });
     });
-  });
+  } catch (error) {
+    console.error('Error updating theme:', error);
+  }
 }
 
 // Search Functionality
@@ -140,29 +165,47 @@ function filterItems(searchTerm) {
   updateItemCount(searchTerm ? `${visibleCount}/${items.length}` : items.length);
 }
 
-// Add debounce helper
+// Optimize debounce with a more efficient implementation
 function debounce(func, wait) {
-  let timeout;
-  return function(...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
+  let timeoutId;
+  return function executedFunction(...args) {
+    const later = () => {
+      timeoutId = null;
+      func(...args);
+    };
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(later, wait);
   };
 }
 
-// Optimize search with debouncing
+// Optimize search with a more efficient implementation
 const debouncedFilter = debounce((searchTerm) => {
   const items = document.querySelectorAll('.reading-item');
   const searchLower = searchTerm.toLowerCase();
   let visibleCount = 0;
+  
+  // Use DocumentFragment for batch updates
+  const fragment = document.createDocumentFragment();
+  const hiddenFragment = document.createDocumentFragment();
   
   items.forEach(item => {
     const link = item.querySelector('a');
     const isVisible = link?.textContent.toLowerCase().includes(searchLower) || 
                      link?.href.toLowerCase().includes(searchLower);
     
-    item.classList.toggle('hidden', !isVisible);
-    if (isVisible) visibleCount++;
+    if (isVisible) {
+      fragment.appendChild(item);
+      visibleCount++;
+    } else {
+      hiddenFragment.appendChild(item);
+    }
   });
+  
+  // Single DOM update
+  const container = DOM.get('readingList');
+  container.innerHTML = '';
+  container.appendChild(fragment);
+  container.appendChild(hiddenFragment);
   
   updateItemCount(searchTerm ? `${visibleCount}/${items.length}` : items.length);
 }, 150);
@@ -172,44 +215,67 @@ function loadItems() {
   chrome.storage.local.get([STORAGE_KEYS.READING_LIST, STORAGE_KEYS.NEWEST_FIRST], function(result) {
     const readingList = result.readingList || [];
     const newestFirst = result.newestFirst !== false;
-    const container = document.getElementById('readingList');
+    const container = DOM.get('readingList');
     
     updateItemCount(readingList.length);
     
-    // Create document fragment for batch DOM update
+    // Create items in batches for better performance
+    const batchSize = 50;
     const fragment = document.createDocumentFragment();
     
-    // Sort the list
+    // Sort the list once
     const sortedList = [...readingList].sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
       return newestFirst ? dateB - dateA : dateA - dateB;
     });
 
-    sortedList.forEach(item => createReadingItem(item, fragment));
-    
-    // Single DOM update
-    container.innerHTML = '';
-    container.appendChild(fragment);
-    
-    resetSearch();
+    function processBatch(startIndex) {
+      const endIndex = Math.min(startIndex + batchSize, sortedList.length);
+      
+      for (let i = startIndex; i < endIndex; i++) {
+        createReadingItem(sortedList[i], fragment);
+      }
+      
+      if (endIndex < sortedList.length) {
+        requestAnimationFrame(() => processBatch(endIndex));
+      } else {
+        container.innerHTML = '';
+        container.appendChild(fragment);
+        resetSearch();
+      }
+    }
+
+    processBatch(0);
 
     // Update sort button title
-    const sortBtn = document.getElementById('sortBtn');
+    const sortBtn = DOM.get('sortBtn');
     if (sortBtn) {
       sortBtn.title = newestFirst ? "Sort by oldest first" : "Sort by newest first";
     }
   });
 }
 
+// Optimize createReadingItem with element pooling
+const elementPool = {
+  items: [],
+  get() {
+    return this.items.pop() || document.createElement('div');
+  },
+  return(element) {
+    this.items.push(element);
+  }
+};
+
 function createReadingItem(item, container) {
-  const div = document.createElement('div');
+  const div = elementPool.get();
   div.className = 'reading-item';
   
   const deleteBtn = createDeleteButton(() => removeItem(item.url));
   const favicon = createFavicon(item.url);
   const link = createItemLink(item);
   
+  div.innerHTML = '';
   div.append(deleteBtn, favicon, link);
   container.appendChild(div);
 }
