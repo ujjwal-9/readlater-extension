@@ -128,6 +128,15 @@ document.addEventListener('DOMContentLoaded', function() {
       reader.readAsText(file); // Read as text for URL list
     }
   });
+
+  // Add to your DOMContentLoaded event listener
+  document.getElementById('editMode').addEventListener('click', function() {
+    enterEditMode();
+  });
+
+  document.getElementById('doneEditing').addEventListener('click', function() {
+    exitEditMode();
+  });
 });
 
 // Function to save the reading list to Chrome sync storage
@@ -273,5 +282,81 @@ function updateBadge() {
       text: showBadge && count > 0 ? count.toString() : '' 
     });
     chrome.action.setBadgeBackgroundColor({ color: '#666666' });
+  });
+}
+
+function enterEditMode() {
+  document.getElementById('editMode').style.display = 'none';
+  document.getElementById('doneEditing').style.display = 'inline-block';
+  document.getElementById('readingList').classList.add('edit-mode');
+  
+  // Make all titles editable
+  const links = document.querySelectorAll('.reading-item a');
+  links.forEach(link => {
+    link.addEventListener('click', handleEditClick);
+    link.style.cursor = 'text';
+  });
+}
+
+function exitEditMode() {
+  document.getElementById('editMode').style.display = 'inline-block';
+  document.getElementById('doneEditing').style.display = 'none';
+  document.getElementById('readingList').classList.remove('edit-mode');
+  
+  // Remove edit listeners and restore normal behavior
+  const links = document.querySelectorAll('.reading-item a');
+  links.forEach(link => {
+    link.removeEventListener('click', handleEditClick);
+    link.style.cursor = '';
+  });
+}
+
+function handleEditClick(e) {
+  e.preventDefault();
+  const link = e.target;
+  const url = link.href;
+  const currentTitle = link.textContent;
+  
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentTitle;
+  input.className = 'edit-input';
+  
+  link.replaceWith(input);
+  input.focus();
+  
+  input.addEventListener('blur', function() {
+    const newTitle = input.value.trim();
+    if (newTitle && newTitle !== currentTitle) {
+      updateTitle(url, newTitle);
+    } else {
+      const newLink = link.cloneNode(true);
+      newLink.addEventListener('click', handleEditClick);
+      input.replaceWith(newLink);
+    }
+  });
+  
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      input.blur();
+    } else if (e.key === 'Escape') {
+      const newLink = link.cloneNode(true);
+      newLink.addEventListener('click', handleEditClick);
+      input.replaceWith(newLink);
+    }
+  });
+}
+
+function updateTitle(url, newTitle) {
+  chrome.storage.local.get(['readingList'], function(result) {
+    const readingList = result.readingList || [];
+    const itemIndex = readingList.findIndex(item => item.url === url);
+    
+    if (itemIndex !== -1) {
+      readingList[itemIndex].title = newTitle;
+      chrome.storage.local.set({ readingList }, function() {
+        loadItems();
+      });
+    }
   });
 }

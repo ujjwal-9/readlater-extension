@@ -199,6 +199,20 @@
       display: flex;
       gap: 8px;
     }
+    .edit-input {
+      font-size: 12px;
+      width: calc(100% - 40px);
+      margin-right: 8px;
+      padding: 1px 2px;
+      border: 1px solid #ddd;
+      border-radius: 2px;
+    }
+    .edit-mode .reading-item a {
+      cursor: text;
+    }
+    .edit-mode .reading-item a:hover {
+      background-color: rgba(0, 0, 0, 0.05);
+    }
   </style>
 </head>
 <body>
@@ -213,6 +227,12 @@
       </div>
     </div>
     <div class="actions">
+      <button id="editMode" class="action-btn">
+        Edit
+      </button>
+      <button id="doneEditing" class="action-btn" style="display: none;">
+        Done
+      </button>
       <button id="clearAll" class="action-btn">Clear All</button>
       <button id="saveButton" class="action-btn">Add</button>
     </div>
