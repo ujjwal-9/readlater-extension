@@ -348,6 +348,48 @@
       padding: 0 15px;
       min-height: 100px;
     }
+
+    .edit-mode-prompt {
+      background-color: var(--hover-bg);
+      color: var(--text-color);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin: 8px 0;
+      display: none;
+      animation: slideDown 0.2s ease-out;
+    }
+
+    .edit-mode-prompt.show {
+      display: block;
+    }
+
+    .icon-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      width: 30px;
+      height: 30px;
+      border: none;
+      background: none;
+    }
+
+    .action-icon {
+      width: 16px;
+      height: 16px;
+      opacity: var(--icon-opacity);
+      transition: opacity 0.2s ease;
+    }
+
+    .icon-btn:hover .action-icon {
+      opacity: 1;
+    }
+
+    .icon-btn:hover {
+      background: var(--hover-bg);
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
@@ -362,21 +404,28 @@
       </div>
     </div>
     <div class="actions">
-      <button id="searchBtn" class="action-btn">
-        Search
+      <button id="searchBtn" class="action-btn icon-btn">
+        <img src="icons/search.png" alt="Search" class="action-icon">
       </button>
-      <button id="editMode" class="action-btn">
-        Edit
+      <button id="editMode" class="action-btn icon-btn">
+        <img src="icons/edit.png" alt="Edit" class="action-icon">
       </button>
-      <button id="doneEditing" class="action-btn" style="display: none;">
-        Done
+      <button id="doneEditing" class="action-btn icon-btn" style="display: none;">
+        <img src="icons/done.png" alt="Done" class="action-icon">
       </button>
-      <button id="clearAll" class="action-btn">Clear All</button>
-      <button id="saveButton" class="action-btn">Add</button>
+      <button id="clearAll" class="action-btn icon-btn">
+        <img src="icons/clearall.png" alt="Clear All" class="action-icon">
+      </button>
+      <button id="saveButton" class="action-btn icon-btn">
+        <img src="icons/add.png" alt="Add" class="action-icon">
+      </button>
     </div>
   </div>
   
   <div class="content-wrapper">
+    <div id="editModePrompt" class="edit-mode-prompt">
+      Click on any title in your reading list to edit it
+    </div>
     <div id="searchContainer" class="search-container">
       <div class="search-input-wrapper">
         <img src="icons/search.png" class="search-icon" alt="Search">

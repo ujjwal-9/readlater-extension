@@ -168,7 +168,6 @@ document.addEventListener('DOMContentLoaded', function() {
   function updateTheme() {
     const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
-    // Store the theme preference
     chrome.storage.local.set({ isDarkMode: isDarkMode }, function() {
       // Notify background script of theme change
       chrome.runtime.sendMessage({ 
@@ -181,16 +180,20 @@ document.addEventListener('DOMContentLoaded', function() {
         color: isDarkMode ? '#9aa0a6' : '#666666'
       });
 
-      // Update header logo
-      const headerLogo = document.getElementById('headerLogo');
-      if (headerLogo) {
-        headerLogo.src = isDarkMode ? 'icons/icon-256-dark.png' : 'icons/icon-256.png';
-      }
+      // Update all icons based on theme
+      const iconMappings = {
+        'headerLogo': 'icon-256',
+        'searchBtn img': 'search',
+        'editMode img': 'edit',
+        'clearAll img': 'clearall',
+        'saveButton img': 'add'
+      };
 
-      // Update search icon
-      const searchIcon = document.querySelector('.search-icon');
-      if (searchIcon) {
-        searchIcon.src = isDarkMode ? 'icons/search-dark.png' : 'icons/search.png';
+      for (const [selector, iconName] of Object.entries(iconMappings)) {
+        const element = document.querySelector(selector);
+        if (element) {
+          element.src = `icons/${iconName}${isDarkMode ? '-dark' : ''}.png`;
+        }
       }
     });
   }
@@ -520,12 +523,14 @@ function enterEditMode() {
   document.getElementById('editMode').style.display = 'none';
   document.getElementById('doneEditing').style.display = 'inline-block';
   document.getElementById('readingList').classList.add('edit-mode');
+  document.getElementById('editModePrompt').classList.add('show');
 }
 
 function exitEditMode() {
   document.getElementById('editMode').style.display = 'inline-block';
   document.getElementById('doneEditing').style.display = 'none';
   document.getElementById('readingList').classList.remove('edit-mode');
+  document.getElementById('editModePrompt').classList.remove('show');
 }
 
 function handleEditClick(e) {
