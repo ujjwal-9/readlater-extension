@@ -273,19 +273,39 @@ function showTitlePrompt(url, defaultTitle) {
   input.focus();
   input.select();
   
-  let isProcessing = false; // Add flag to prevent double processing
+  let isProcessing = false;
   
   // Function to handle saving
   const handleSave = () => {
-    if (isProcessing) return; // Prevent double processing
+    if (isProcessing) return;
     isProcessing = true;
     
-    const title = input.value.trim() || defaultTitle;
-    // Remove container only if it's still in the DOM
+    const userTitle = input.value.trim() || defaultTitle;
     if (container.parentNode) {
       container.remove();
     }
-    saveItem(url, title);
+    
+    // Save both the user's title and original page title
+    chrome.storage.local.get(['readingList'], function(result) {
+      const readingList = result.readingList || [];
+      const urlExists = readingList.some(item => item.url === url);
+      
+      if (!urlExists) {
+        readingList.push({
+          url: url,
+          title: userTitle,         // User's chosen title
+          originalTitle: defaultTitle, // Original page title
+          date: new Date().toISOString()
+        });
+        
+        chrome.storage.local.set({
+          readingList: readingList
+        }, function() {
+          loadItems();
+          updateBadge();
+        });
+      }
+    });
   };
   
   // Function to handle cancel
@@ -325,7 +345,8 @@ function saveItem(url, title) {
     if (!urlExists) {
       readingList.push({
         url: url,
-        title: title,
+        title: title,           // This could be user-modified title
+        originalTitle: title,   // Always store original page title
         date: new Date().toISOString()
       });
       
@@ -359,45 +380,21 @@ function loadItems() {
       const div = document.createElement('div');
       div.className = 'reading-item';
       
-      // Function to wrap text and align with proper indentation
-      const wrapText = (text, labelWidth) => {
-        const words = text.split(' ');
-        const lines = [];
-        let currentLine = '';
-        
-        words.forEach(word => {
-          if ((currentLine + word).length > 45) { // max line length
-            lines.push(currentLine);
-            currentLine = ' '.repeat(labelWidth) + word;
-          } else {
-            currentLine += (currentLine ? ' ' : '') + word;
-          }
-        });
-        if (currentLine) {
-          lines.push(currentLine);
-        }
-        return lines;
-      };
-
       // Format dates
       const addedDate = new Date(item.date).toLocaleString();
       const lastOpenedDate = item.lastOpened 
         ? new Date(item.lastOpened).toLocaleString()
         : 'Never';
 
-      // Create wrapped title lines
-      const titleLines = wrapText(item.title, 8); // 8 spaces for alignment with "Title: "
-      
-      // Create tooltip content
+      // Create tooltip content - show originalTitle only if it exists
       const tooltipContent = [
-        'Title: ' + titleLines[0],
-        ...titleLines.slice(1), // Add remaining wrapped lines if any
+        'Title: ' + (item.originalTitle || item.title),
         '',  // Empty line for spacing
         'Added: ' + addedDate,
         'Opened: ' + lastOpenedDate
       ].join('\n');
       
-      div.dataset.tooltip = tooltipContent;
+      div.title = tooltipContent;
       
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'delete-btn';
@@ -438,9 +435,18 @@ function loadItems() {
       const link = document.createElement('a');
       link.href = item.url;
       link.target = '_blank';
-      
       link.textContent = item.title || item.url;
-      link.addEventListener('click', () => trackLinkOpen(item.url));
+      
+      // Add click handlers for both opening and editing
+      link.addEventListener('click', function(e) {
+        if (document.getElementById('readingList').classList.contains('edit-mode')) {
+          e.preventDefault(); // Prevent opening link in edit mode
+          handleEditClick(e);
+        } else {
+          trackLinkOpen(item.url);
+        }
+      });
+      
       div.appendChild(link);
 
       container.appendChild(div);
@@ -490,26 +496,12 @@ function enterEditMode() {
   document.getElementById('editMode').style.display = 'none';
   document.getElementById('doneEditing').style.display = 'inline-block';
   document.getElementById('readingList').classList.add('edit-mode');
-  
-  // Make all titles editable
-  const links = document.querySelectorAll('.reading-item a');
-  links.forEach(link => {
-    link.addEventListener('click', handleEditClick);
-    link.style.cursor = 'text';
-  });
 }
 
 function exitEditMode() {
   document.getElementById('editMode').style.display = 'inline-block';
   document.getElementById('doneEditing').style.display = 'none';
   document.getElementById('readingList').classList.remove('edit-mode');
-  
-  // Remove edit listeners and restore normal behavior
-  const links = document.querySelectorAll('.reading-item a');
-  links.forEach(link => {
-    link.removeEventListener('click', handleEditClick);
-    link.style.cursor = '';
-  });
 }
 
 function handleEditClick(e) {
@@ -525,15 +517,14 @@ function handleEditClick(e) {
   
   link.replaceWith(input);
   input.focus();
+  input.select(); // Select all text when editing starts
   
   input.addEventListener('blur', function() {
     const newTitle = input.value.trim();
     if (newTitle && newTitle !== currentTitle) {
       updateTitle(url, newTitle);
     } else {
-      const newLink = link.cloneNode(true);
-      newLink.addEventListener('click', handleEditClick);
-      input.replaceWith(newLink);
+      loadItems(); // Reload the entire list to restore the original state
     }
   });
   
@@ -541,9 +532,7 @@ function handleEditClick(e) {
     if (e.key === 'Enter') {
       input.blur();
     } else if (e.key === 'Escape') {
-      const newLink = link.cloneNode(true);
-      newLink.addEventListener('click', handleEditClick);
-      input.replaceWith(newLink);
+      loadItems(); // Reload the entire list to restore the original state
     }
   });
 }
@@ -554,7 +543,13 @@ function updateTitle(url, newTitle) {
     const itemIndex = readingList.findIndex(item => item.url === url);
     
     if (itemIndex !== -1) {
+      // If this is the first edit, store the original title
+      if (!readingList[itemIndex].originalTitle) {
+        readingList[itemIndex].originalTitle = readingList[itemIndex].title;
+      }
+      // Update the title
       readingList[itemIndex].title = newTitle;
+      
       chrome.storage.local.set({ readingList }, function() {
         loadItems();
       });

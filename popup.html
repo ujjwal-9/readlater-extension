@@ -348,50 +348,6 @@
       padding: 0 15px;
       min-height: 100px;
     }
-
-    /* Style the native tooltip */
-    .reading-item[data-tooltip] {
-      cursor: help;
-    }
-
-    /* Optional: If you want custom tooltips instead of native ones */
-    .reading-item::after {
-      content: attr(data-tooltip);
-      position: absolute;
-      top: 50%;
-      left: calc(100% + 10px);
-      transform: translateY(-50%);
-      padding: 12px 16px;
-      background: var(--bg-color);
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      font-size: 11px;
-      white-space: pre;
-      width: max-content;
-      max-width: 400px;
-      visibility: hidden;
-      opacity: 0;
-      transition: opacity 0.2s;
-      z-index: 1000;
-      pointer-events: none;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      font-family: Consolas, monospace;
-      line-height: 1.4;
-    }
-
-    @media (max-width: 768px) {
-      .reading-item::after {
-        left: 50%;
-        top: 100%;
-        transform: translateX(-50%);
-        margin-top: 5px;
-      }
-    }
-
-    .reading-item:hover::after {
-      visibility: visible;
-      opacity: 1;
-    }
   </style>
 </head>
 <body>
