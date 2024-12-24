@@ -2,7 +2,8 @@
 const STORAGE_KEYS = {
   READING_LIST: 'readingList',
   SHOW_BADGE: 'showBadge',
-  IS_DARK_MODE: 'isDarkMode'
+  IS_DARK_MODE: 'isDarkMode',
+  NEWEST_FIRST: 'newestFirst'
 };
 
 // Core initialization
@@ -42,6 +43,9 @@ function setupEventListeners() {
     e.preventDefault();
     document.getElementById('downloadJson')?.click();
   });
+
+  // Add sort button handler
+  document.getElementById('sortBtn')?.addEventListener('click', handleSort);
 }
 
 // Theme Management
@@ -116,6 +120,11 @@ function updateTheme() {
         selector: 'img[alt="Clear All"]',
         light: 'icons/clearall.png',
         dark: 'icons/clearall-dark.png'
+      },
+      'badge': {
+        selector: '.settings-item img[alt="Badge"]',
+        light: 'icons/badge.png',
+        dark: 'icons/badge-dark.png'
       }
     };
 
@@ -172,15 +181,29 @@ function filterItems(searchTerm) {
 
 // Reading List Management
 function loadItems() {
-  chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
+  chrome.storage.local.get([STORAGE_KEYS.READING_LIST, STORAGE_KEYS.NEWEST_FIRST], function(result) {
     const readingList = result.readingList || [];
+    const newestFirst = result.newestFirst !== false;
     const container = document.getElementById('readingList');
     
     updateItemCount(readingList.length);
     container.innerHTML = '';
 
-    readingList.forEach(item => createReadingItem(item, container));
+    // Create a copy of the array and sort it
+    const sortedList = [...readingList].sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return newestFirst ? dateB - dateA : dateA - dateB;
+    });
+
+    sortedList.forEach(item => createReadingItem(item, container));
     resetSearch();
+
+    // Update sort button title
+    const sortBtn = document.getElementById('sortBtn');
+    if (sortBtn) {
+      sortBtn.title = newestFirst ? "Sort by oldest first" : "Sort by newest first";
+    }
   });
 }
 
@@ -225,12 +248,55 @@ function createItemLink(item) {
   link.target = '_blank';
   link.textContent = item.title || item.url;
   
+  // Format dates for tooltip
+  const addedDate = formatDate(item.date);
+  const lastOpenedDate = item.lastOpened ? formatDate(item.lastOpened) : 'Never';
+  
+  // Create tooltip content
+  const tooltipContent = [
+    `${item.originalTitle || item.title}`,
+    ``,
+    `Added: ${addedDate}`,
+    `Last Opened: ${lastOpenedDate}`
+  ].join('\n');
+  
+  link.title = tooltipContent;
+  
   link.addEventListener('click', function(e) {
     e.preventDefault();
+    trackLinkOpen(item.url);
     window.open(item.url, '_blank');
   });
   
   return link;
+}
+
+// Add this helper function for date formatting
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+// Add this function to track when links are opened
+function trackLinkOpen(url) {
+  chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
+    const readingList = result.readingList || [];
+    const itemIndex = readingList.findIndex(item => item.url === url);
+    
+    if (itemIndex !== -1) {
+      readingList[itemIndex].lastOpened = new Date().toISOString();
+      chrome.storage.local.set({
+        [STORAGE_KEYS.READING_LIST]: readingList
+      });
+    }
+  });
 }
 
 function removeItem(url) {
@@ -299,14 +365,103 @@ function handleBadgeToggle(e) {
 }
 
 function handleClearAll() {
-  if (confirm('Are you sure you want to delete all items? This cannot be undone.')) {
-    chrome.storage.local.set({
-      [STORAGE_KEYS.READING_LIST]: []
-    }, function() {
-      loadItems();
-      updateBadge();
-    });
-  }
+  // Get the current reading list count first
+  chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
+    const readingList = result.readingList || [];
+    const itemCount = readingList.length;
+    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    // Create and style the confirmation dialog
+    const confirmDialog = document.createElement('div');
+    confirmDialog.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--bg-color);
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 1000;
+      width: 300px;
+      text-align: center;
+    `;
+
+    // Add icon and content with item count
+    confirmDialog.innerHTML = `
+      <div style="margin-bottom: 15px;">
+        <img src="icons/icon-128${isDarkMode ? '-dark' : ''}.png" alt="Read Later" style="width: 48px; height: 48px;">
+      </div>
+      <div style="margin-bottom: 20px; color: var(--text-color);">
+        Are you sure you want to delete all ${itemCount} items? This cannot be undone.
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button id="cancelClear" class="action-btn" style="padding: 8px 16px;">Cancel</button>
+        <button id="confirmClear" class="action-btn" 
+                style="padding: 8px 16px; border: 1px solid #d32f2f; background: none; color: #d32f2f;">Delete All</button>
+      </div>
+    `;
+
+    // Add overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 999;
+    `;
+
+    // Add to document
+    document.body.appendChild(overlay);
+    document.body.appendChild(confirmDialog);
+
+    // Style the buttons with hover effects
+    const confirmBtn = document.getElementById('confirmClear');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('mouseover', () => {
+        confirmBtn.style.background = '#fff1f1';
+      });
+      confirmBtn.addEventListener('mouseout', () => {
+        confirmBtn.style.background = 'none';
+      });
+    }
+
+    const cancelBtn = document.getElementById('cancelClear');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('mouseover', () => {
+        cancelBtn.style.background = 'var(--hover-bg)';
+      });
+      cancelBtn.addEventListener('mouseout', () => {
+        cancelBtn.style.background = 'none';
+      });
+    }
+
+    // Handle button clicks
+    document.getElementById('cancelClear').onclick = () => {
+      overlay.remove();
+      confirmDialog.remove();
+    };
+
+    document.getElementById('confirmClear').onclick = () => {
+      chrome.storage.local.set({
+        [STORAGE_KEYS.READING_LIST]: []
+      }, function() {
+        loadItems();
+        updateBadge();
+        overlay.remove();
+        confirmDialog.remove();
+      });
+    };
+
+    // Close on overlay click
+    overlay.onclick = () => {
+      overlay.remove();
+      confirmDialog.remove();
+    };
+  });
 }
 
 // Edit Mode Functions
@@ -419,5 +574,22 @@ function downloadReadingList(e) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  });
+}
+
+// Add these new functions
+function handleSort() {
+  chrome.storage.local.get([STORAGE_KEYS.NEWEST_FIRST], function(result) {
+    const newestFirst = !result.newestFirst; // Toggle the sort order
+    chrome.storage.local.set({ 
+      [STORAGE_KEYS.NEWEST_FIRST]: newestFirst 
+    }, function() {
+      loadItems();
+      // Update the sort button title
+      const sortBtn = document.getElementById('sortBtn');
+      if (sortBtn) {
+        sortBtn.title = newestFirst ? "Sort by oldest first" : "Sort by newest first";
+      }
+    });
   });
 }

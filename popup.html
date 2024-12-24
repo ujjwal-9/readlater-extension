@@ -469,10 +469,21 @@
     .settings-item {
       display: flex;
       align-items: flex-start;
+      justify-content: space-between;
       padding: 12px 0;
       cursor: pointer;
       color: var(--text-color);
       border-bottom: 1px solid var(--border-color);
+    }
+
+    .settings-item input[type="checkbox"] {
+      margin: 0;
+      margin-left: 12px;
+      margin-top: 2px;
+    }
+
+    .settings-item-content {
+      flex: 1;
     }
 
     .settings-item:hover {
@@ -709,8 +720,12 @@
       <h3 class="settings-section-title">Display</h3>
       <div class="settings-section">
         <label class="settings-item">
+          <img src="icons/badge.png" alt="Badge" class="action-icon">
+          <div class="settings-item-content">
+            <div class="settings-item-title">Show badge count</div>
+            <div class="settings-item-description">Display the number of items on the extension icon</div>
+          </div>
           <input type="checkbox" id="settingsShowBadge">
-          Show badge count
         </label>
       </div>
       <h3 class="settings-section-title">Data Management</h3>
