@@ -75,9 +75,11 @@ const extensionUI = {
 
 // Cached storage operations
 const storage = {
-  async get(...keys) {
+  async get(keys) {
     return new Promise(resolve => {
-      chrome.storage.local.get(keys, resolve);
+      // Handle both single key and array of keys
+      const keysToGet = Array.isArray(keys) ? keys : (keys ? [keys] : null);
+      chrome.storage.local.get(keysToGet, resolve);
     });
   },
   
@@ -90,20 +92,23 @@ const storage = {
 
 // Main functions
 async function handleThemeChange() {
-  const { isDarkMode } = await storage.get('isDarkMode');
-  await extensionUI.updateIcon(isDarkMode);
+  const result = await storage.get('isDarkMode');
+  await extensionUI.updateIcon(result.isDarkMode);
 }
 
 async function updateBadgeCount() {
-  const { readingList, showBadge } = await storage.get(['readingList', 'showBadge']);
-  const count = (readingList || []).length;
+  const result = await storage.get(['readingList', 'showBadge']);
+  const count = (result.readingList || []).length;
+  const showBadge = result.showBadge !== false;
   const text = showBadge && count > 0 ? count.toString() : '';
   
   extensionUI.scheduleBadgeUpdate(text, THEME.COLORS.light);
 }
 
 async function saveCurrentPage(tab) {
-  const { readingList = [], showBadge } = await storage.get(['readingList', 'showBadge']);
+  const result = await storage.get(['readingList', 'showBadge']);
+  const readingList = result.readingList || [];
+  const showBadge = result.showBadge !== false;
   
   if (readingList.some(item => item.url === tab.url)) return;
   

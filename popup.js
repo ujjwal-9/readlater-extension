@@ -43,6 +43,22 @@ const DOM = {
   }
 };
 
+// Add storage utility at the top of the file with other utilities
+const storage = {
+  async get(keys) {
+    return new Promise(resolve => {
+      const keysToGet = Array.isArray(keys) ? keys : (keys ? [keys] : null);
+      chrome.storage.local.get(keysToGet, resolve);
+    });
+  },
+  
+  async set(data) {
+    return new Promise(resolve => {
+      chrome.storage.local.set(data, resolve);
+    });
+  }
+};
+
 // Core initialization
 document.addEventListener('DOMContentLoaded', async function() {
   try {
@@ -88,15 +104,15 @@ function setupEventListeners() {
       downloadReadingList(e);
     } else if (target.closest('#settingsDownload')) {
       e.preventDefault();
-      document.getElementById('downloadJson')?.click();
+      DOM.get('downloadJson')?.click();
     } else if (target.closest('#sortBtn')) {
       handleSort();
     }
   });
 
-  // Add remaining necessary event listeners
-  document.getElementById('searchInput')?.addEventListener('input', e => debouncedFilter(e.target.value));
-  document.getElementById('settingsShowBadge')?.addEventListener('change', handleBadgeToggle);
+  // Add search input handler
+  DOM.get('searchInput')?.addEventListener('input', e => debouncedFilter(e.target.value));
+  DOM.get('settingsShowBadge')?.addEventListener('change', handleBadgeToggle);
 }
 
 // Theme Management
@@ -131,9 +147,9 @@ async function updateTheme() {
 
 // Search Functionality
 function toggleSearch() {
-  const searchContainer = document.getElementById('searchContainer');
-  const searchInput = document.getElementById('searchInput');
-  const searchBtn = document.getElementById('searchBtn');
+  const searchContainer = DOM.get('searchContainer');
+  const searchInput = DOM.get('searchInput');
+  const searchBtn = DOM.get('searchBtn');
   
   const isHidden = searchContainer.style.display === 'none' || !searchContainer.style.display;
   
@@ -150,15 +166,64 @@ function toggleSearch() {
 
 function filterItems(searchTerm) {
   const items = document.querySelectorAll('.reading-item');
-  const searchLower = searchTerm.toLowerCase();
+  const searchLower = searchTerm.toLowerCase().trim();
   let visibleCount = 0;
+  
+  // If search is empty, show all items
+  if (!searchLower) {
+    items.forEach(item => {
+      item.style.display = '';
+    });
+    updateItemCount(items.length);
+    return;
+  }
+
+  // Split search terms for multiple word search
+  const searchTerms = searchLower.split(/\s+/);
   
   items.forEach(item => {
     const link = item.querySelector('a');
-    const isVisible = link?.textContent.toLowerCase().includes(searchLower) || 
-                     link?.href.toLowerCase().includes(searchLower);
+    if (!link) return;
+
+    const title = link.textContent.toLowerCase();
+    const url = link.href.toLowerCase();
+    const originalTitle = link.getAttribute('data-original-title')?.toLowerCase() || '';
     
-    item.classList.toggle('hidden', !isVisible);
+    // Check if any search term matches any of these conditions:
+    // 1. Exact match in title, url, or original title
+    // 2. Word starts with search term
+    // 3. Search term is part of a word (minimum 3 characters)
+    const isVisible = searchTerms.every(term => {
+      // Skip very short search terms for partial matches
+      if (term.length < 2) {
+        return title.includes(term) || url.includes(term) || originalTitle.includes(term);
+      }
+
+      // Check for exact matches first
+      if (title.includes(term) || url.includes(term) || originalTitle.includes(term)) {
+        return true;
+      }
+
+      // Split into words and check for word starts
+      const titleWords = title.split(/\s+/);
+      const originalTitleWords = originalTitle.split(/\s+/);
+      
+      // Check if any word starts with the search term
+      const wordStartMatch = [...titleWords, ...originalTitleWords].some(word => 
+        word.startsWith(term)
+      );
+      if (wordStartMatch) return true;
+
+      // For longer search terms (3+ chars), check for partial matches within words
+      if (term.length >= 3) {
+        return titleWords.some(word => word.includes(term)) || 
+               originalTitleWords.some(word => word.includes(term));
+      }
+
+      return false;
+    });
+    
+    item.style.display = isVisible ? '' : 'none';
     if (isVisible) visibleCount++;
   });
   
@@ -178,36 +243,9 @@ function debounce(func, wait) {
   };
 }
 
-// Optimize search with a more efficient implementation
+// Optimize search filtering
 const debouncedFilter = debounce((searchTerm) => {
-  const items = document.querySelectorAll('.reading-item');
-  const searchLower = searchTerm.toLowerCase();
-  let visibleCount = 0;
-  
-  // Use DocumentFragment for batch updates
-  const fragment = document.createDocumentFragment();
-  const hiddenFragment = document.createDocumentFragment();
-  
-  items.forEach(item => {
-    const link = item.querySelector('a');
-    const isVisible = link?.textContent.toLowerCase().includes(searchLower) || 
-                     link?.href.toLowerCase().includes(searchLower);
-    
-    if (isVisible) {
-      fragment.appendChild(item);
-      visibleCount++;
-    } else {
-      hiddenFragment.appendChild(item);
-    }
-  });
-  
-  // Single DOM update
-  const container = DOM.get('readingList');
-  container.innerHTML = '';
-  container.appendChild(fragment);
-  container.appendChild(hiddenFragment);
-  
-  updateItemCount(searchTerm ? `${visibleCount}/${items.length}` : items.length);
+  filterItems(searchTerm);
 }, 150);
 
 // Reading List Management
@@ -275,6 +313,11 @@ function createReadingItem(item, container) {
   const favicon = createFavicon(item.url);
   const link = createItemLink(item);
   
+  // Add edit handler if in edit mode
+  if (DOM.get('readingList')?.classList.contains('edit-mode')) {
+    link.addEventListener('click', handleTitleEdit);
+  }
+  
   div.innerHTML = '';
   div.append(deleteBtn, favicon, link);
   container.appendChild(div);
@@ -309,6 +352,11 @@ function createItemLink(item) {
   link.target = '_blank';
   link.textContent = item.title || item.url;
   
+  // Store original title for search
+  if (item.originalTitle) {
+    link.setAttribute('data-original-title', item.originalTitle);
+  }
+  
   // Format dates for tooltip
   const addedDate = formatDate(item.date);
   const lastOpenedDate = item.lastOpened ? formatDate(item.lastOpened) : 'Never';
@@ -323,10 +371,13 @@ function createItemLink(item) {
   
   link.title = tooltipContent;
   
+  // Add click handler for normal mode
   link.addEventListener('click', function(e) {
-    e.preventDefault();
-    trackLinkOpen(item.url);
-    window.open(item.url, '_blank');
+    if (!DOM.get('readingList').classList.contains('edit-mode')) {
+      e.preventDefault();
+      trackLinkOpen(item.url);
+      window.open(item.url, '_blank');
+    }
   });
   
   return link;
@@ -394,16 +445,21 @@ function updateItemCount(count) {
 }
 
 function resetSearch() {
-  const searchContainer = document.getElementById('searchContainer');
-  const searchInput = document.getElementById('searchInput');
-  const searchBtn = document.getElementById('searchBtn');
+  const searchContainer = DOM.get('searchContainer');
+  const searchInput = DOM.get('searchInput');
+  const searchBtn = DOM.get('searchBtn');
   
   if (searchInput) {
     searchInput.value = '';
     searchContainer.style.display = 'none';
     searchBtn?.classList.remove('active');
+    
+    // Show all items
+    const items = document.querySelectorAll('.reading-item');
+    items.forEach(item => {
+      item.style.display = '';
+    });
   }
-  filterItems('');
 }
 
 // Settings Panel Functions
@@ -527,17 +583,93 @@ function handleClearAll() {
 
 // Edit Mode Functions
 function enterEditMode() {
-  document.getElementById('editMode').style.display = 'none';
-  document.getElementById('doneEditing').style.display = 'inline-block';
-  document.getElementById('readingList').classList.add('edit-mode');
-  document.getElementById('editModePrompt').classList.add('show');
+  DOM.get('editMode').style.display = 'none';
+  DOM.get('doneEditing').style.display = 'inline-block';
+  DOM.get('readingList').classList.add('edit-mode');
+  DOM.get('editModePrompt').classList.add('show');
+
+  // Add click handlers for editing titles
+  const items = document.querySelectorAll('.reading-item');
+  items.forEach(item => {
+    const link = item.querySelector('a');
+    if (link) {
+      link.addEventListener('click', handleTitleEdit);
+    }
+  });
 }
 
 function exitEditMode() {
-  document.getElementById('editMode').style.display = 'inline-block';
-  document.getElementById('doneEditing').style.display = 'none';
-  document.getElementById('readingList').classList.remove('edit-mode');
-  document.getElementById('editModePrompt').classList.remove('show');
+  DOM.get('editMode').style.display = 'inline-block';
+  DOM.get('doneEditing').style.display = 'none';
+  DOM.get('readingList').classList.remove('edit-mode');
+  DOM.get('editModePrompt').classList.remove('show');
+
+  // Remove click handlers for editing titles
+  const items = document.querySelectorAll('.reading-item');
+  items.forEach(item => {
+    const link = item.querySelector('a');
+    if (link) {
+      link.removeEventListener('click', handleTitleEdit);
+    }
+  });
+}
+
+async function handleTitleEdit(e) {
+  e.preventDefault();
+  const link = e.target;
+  const item = link.closest('.reading-item');
+  const url = link.href;
+  
+  // Create edit input
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = link.textContent;
+  input.className = 'edit-input';
+  
+  // Replace link with input
+  link.style.display = 'none';
+  item.insertBefore(input, link);
+  input.focus();
+  input.select();
+  
+  const saveEdit = async () => {
+    try {
+      const newTitle = input.value.trim();
+      if (newTitle) {
+        // Get current reading list
+        const result = await chrome.storage.local.get(STORAGE_KEYS.READING_LIST);
+        const readingList = result.readingList || [];
+        const itemIndex = readingList.findIndex(item => item.url === url);
+        
+        if (itemIndex !== -1) {
+          readingList[itemIndex].title = newTitle;
+          await chrome.storage.local.set({
+            [STORAGE_KEYS.READING_LIST]: readingList
+          });
+          link.textContent = newTitle;
+        }
+      }
+    } catch (error) {
+      console.error('Error saving title:', error);
+    } finally {
+      // Cleanup
+      input.remove();
+      link.style.display = '';
+    }
+  };
+  
+  // Handle input events
+  input.addEventListener('blur', saveEdit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      input.remove();
+      link.style.display = '';
+    }
+  });
 }
 
 // Save Page Functions
@@ -560,7 +692,7 @@ function showTitlePrompt(url, defaultTitle) {
   
   container.appendChild(input);
   
-  const readingList = document.getElementById('readingList');
+  const readingList = DOM.get('readingList');
   readingList.insertBefore(container, readingList.firstChild);
   
   input.focus();
@@ -568,33 +700,66 @@ function showTitlePrompt(url, defaultTitle) {
   
   let isProcessing = false;
   
-  const handleSave = () => {
+  const handleSave = async () => {
     if (isProcessing) return;
     isProcessing = true;
     
     const userTitle = input.value.trim() || defaultTitle;
     container.remove();
     
-    chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
-      const readingList = result.readingList || [];
-      const urlExists = readingList.some(item => item.url === url);
+    // Get both reading list and sort order
+    const result = await storage.get([STORAGE_KEYS.READING_LIST, STORAGE_KEYS.NEWEST_FIRST]);
+    const readingList = result.readingList || [];
+    const newestFirst = result.newestFirst !== false;
+    const urlExists = readingList.some(item => item.url === url);
+    
+    if (!urlExists) {
+      const newItem = {
+        url: url,
+        title: userTitle,
+        originalTitle: defaultTitle,
+        date: new Date().toISOString()
+      };
       
-      if (!urlExists) {
-        readingList.push({
-          url: url,
-          title: userTitle,
-          originalTitle: defaultTitle,
-          date: new Date().toISOString()
-        });
-        
-        chrome.storage.local.set({
-          [STORAGE_KEYS.READING_LIST]: readingList
-        }, function() {
-          loadItems();
-          updateBadge();
-        });
+      readingList.push(newItem);
+      
+      await storage.set({
+        [STORAGE_KEYS.READING_LIST]: readingList
+      });
+
+      // Sort the list according to current sort order
+      const sortedList = [...readingList].sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        return newestFirst ? dateB - dateA : dateA - dateB;
+      });
+
+      // Find the correct position for the new item
+      const newItemIndex = sortedList.findIndex(item => item.url === url);
+      
+      // Create the new item
+      const fragment = document.createDocumentFragment();
+      createReadingItem(newItem, fragment);
+      
+      // Add edit handler if in edit mode
+      if (DOM.get('readingList').classList.contains('edit-mode')) {
+        const link = fragment.querySelector('a');
+        if (link) {
+          link.addEventListener('click', handleTitleEdit);
+        }
       }
-    });
+      
+      // Insert at the correct position
+      const container = DOM.get('readingList');
+      const items = container.children;
+      if (newItemIndex < items.length) {
+        container.insertBefore(fragment, items[newItemIndex]);
+      } else {
+        container.appendChild(fragment);
+      }
+      
+      updateBadge();
+    }
   };
   
   const handleCancel = () => {
