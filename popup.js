@@ -1,3 +1,29 @@
+// Move filterItems function outside DOMContentLoaded
+function filterItems(searchTerm) {
+  const items = document.querySelectorAll('.reading-item');
+  const searchLower = searchTerm.toLowerCase();
+  let visibleCount = 0;
+  
+  items.forEach(item => {
+    const link = item.querySelector('a');
+    const title = link.textContent.toLowerCase();
+    const url = link.href.toLowerCase();
+    
+    if (title.includes(searchLower) || url.includes(searchLower)) {
+      item.classList.remove('hidden');
+      visibleCount++;
+    } else {
+      item.classList.add('hidden');
+    }
+  });
+  
+  // Update count to show number of visible items
+  const linkCount = document.getElementById('linkCount');
+  if (linkCount) {
+    linkCount.textContent = searchTerm ? `${visibleCount}/${items.length}` : items.length;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   // Load saved items when popup opens
   loadItems();
@@ -195,29 +221,6 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('searchInput').addEventListener('input', function(e) {
     filterItems(e.target.value);
   });
-
-  function filterItems(searchTerm) {
-    const items = document.querySelectorAll('.reading-item');
-    const searchLower = searchTerm.toLowerCase();
-    let visibleCount = 0;
-    
-    items.forEach(item => {
-      const link = item.querySelector('a');
-      const title = link.textContent.toLowerCase();
-      const url = link.href.toLowerCase();
-      
-      if (title.includes(searchLower) || url.includes(searchLower)) {
-        item.classList.remove('hidden');
-        visibleCount++;
-      } else {
-        item.classList.add('hidden');
-      }
-    });
-    
-    // Update count to show number of visible items
-    document.getElementById('linkCount').textContent = 
-      searchTerm ? `${visibleCount}/${items.length}` : items.length;
-  }
 });
 
 // Function to save the reading list to Chrome sync storage
