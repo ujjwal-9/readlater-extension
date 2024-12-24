@@ -40,15 +40,27 @@ chrome.runtime.onMessage.addListener(async function(message) {
   }
 });
 
+// Cache the badge state
+let lastBadgeText = '';
+let lastBadgeColor = '';
+
 function updateBadge() {
   chrome.storage.local.get(['readingList', 'showBadge'], function(result) {
     const count = (result.readingList || []).length;
     const showBadge = result.showBadge !== false;
+    const newBadgeText = showBadge && count > 0 ? count.toString() : '';
     
-    chrome.action.setBadgeText({ 
-      text: showBadge && count > 0 ? count.toString() : '' 
-    });
-    chrome.action.setBadgeBackgroundColor({ color: '#666666' });
+    // Only update if changed
+    if (newBadgeText !== lastBadgeText) {
+      chrome.action.setBadgeText({ text: newBadgeText });
+      lastBadgeText = newBadgeText;
+    }
+    
+    const newBadgeColor = '#666666';
+    if (newBadgeColor !== lastBadgeColor) {
+      chrome.action.setBadgeBackgroundColor({ color: newBadgeColor });
+      lastBadgeColor = newBadgeColor;
+    }
   });
 }
 

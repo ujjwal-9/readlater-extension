@@ -6,8 +6,32 @@ const STORAGE_KEYS = {
   NEWEST_FIRST: 'newestFirst'
 };
 
+// Cache DOM queries for icons
+const iconElements = {};
+function cacheIconElements() {
+  const iconMappings = {
+    'icon': '#headerLogo',
+    'search': '#searchBtn img[alt="Search"], .search-icon',
+    'edit': '#editMode img[alt="Edit"]',
+    'done': '#doneEditing img[alt="Done"]',
+    'sort': '#sortBtn img[alt="Sort"]',
+    'settings': '#settingsBtn img[alt="Settings"]',
+    'add': '#saveButton img[alt="Add"]',
+    'back': '#settingsBack img[alt="Back"]',
+    'backup': 'img[alt="Backup"]',
+    'restore': 'img[alt="Restore"]',
+    'clearall': 'img[alt="Clear All"]',
+    'badge': '.settings-item img[alt="Badge"]'
+  };
+
+  Object.entries(iconMappings).forEach(([key, selector]) => {
+    iconElements[key] = document.querySelectorAll(selector);
+  });
+}
+
 // Core initialization
 document.addEventListener('DOMContentLoaded', function() {
+  cacheIconElements();
   loadItems();
   updateBadge();
   updateTheme();
@@ -20,32 +44,38 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function setupEventListeners() {
-  // Save current page
-  document.getElementById('saveButton')?.addEventListener('click', saveCurrentPage);
-
-  // Search functionality
-  document.getElementById('searchBtn')?.addEventListener('click', toggleSearch);
-  document.getElementById('searchInput')?.addEventListener('input', e => filterItems(e.target.value));
-
-  // Edit mode
-  document.getElementById('editMode')?.addEventListener('click', enterEditMode);
-  document.getElementById('doneEditing')?.addEventListener('click', exitEditMode);
-
-  // Settings panel
-  document.getElementById('settingsBtn')?.addEventListener('click', showSettingsPanel);
-  document.getElementById('settingsBack')?.addEventListener('click', hideSettingsPanel);
-  document.getElementById('settingsShowBadge')?.addEventListener('change', handleBadgeToggle);
-  document.getElementById('settingsClearAll')?.addEventListener('click', handleClearAll);
-
-  // Download/Upload
-  document.getElementById('downloadJson')?.addEventListener('click', downloadReadingList);
-  document.getElementById('settingsDownload')?.addEventListener('click', e => {
-    e.preventDefault();
-    document.getElementById('downloadJson')?.click();
+  // Use a single event listener for the document
+  document.addEventListener('click', function(e) {
+    const target = e.target;
+    
+    // Handle different button clicks
+    if (target.closest('#saveButton')) {
+      saveCurrentPage();
+    } else if (target.closest('#searchBtn')) {
+      toggleSearch();
+    } else if (target.closest('#editMode')) {
+      enterEditMode();
+    } else if (target.closest('#doneEditing')) {
+      exitEditMode();
+    } else if (target.closest('#settingsBtn')) {
+      showSettingsPanel();
+    } else if (target.closest('#settingsBack')) {
+      hideSettingsPanel();
+    } else if (target.closest('#settingsClearAll')) {
+      handleClearAll();
+    } else if (target.closest('#downloadJson')) {
+      downloadReadingList(e);
+    } else if (target.closest('#settingsDownload')) {
+      e.preventDefault();
+      document.getElementById('downloadJson')?.click();
+    } else if (target.closest('#sortBtn')) {
+      handleSort();
+    }
   });
 
-  // Add sort button handler
-  document.getElementById('sortBtn')?.addEventListener('click', handleSort);
+  // Add remaining necessary event listeners
+  document.getElementById('searchInput')?.addEventListener('input', e => debouncedFilter(e.target.value));
+  document.getElementById('settingsShowBadge')?.addEventListener('change', handleBadgeToggle);
 }
 
 // Theme Management
@@ -59,84 +89,15 @@ function updateTheme() {
       color: isDarkMode ? '#9aa0a6' : '#666666'
     });
 
-    // Define all available icons with their light/dark variants
-    const iconMappings = {
-      'headerLogo': {
-        selector: '#headerLogo',
-        light: 'icons/icon-256.png',
-        dark: 'icons/icon-256-dark.png'
-      },
-      'search': {
-        selector: '#searchBtn img[alt="Search"]',
-        light: 'icons/search.png',
-        dark: 'icons/search-dark.png'
-      },
-      'edit': {
-        selector: '#editMode img[alt="Edit"]',
-        light: 'icons/edit.png',
-        dark: 'icons/edit-dark.png'
-      },
-      'done': {
-        selector: '#doneEditing img[alt="Done"]',
-        light: 'icons/done.png',
-        dark: 'icons/done-dark.png'
-      },
-      'search-icon': {
-        selector: '.search-icon',
-        light: 'icons/search.png',
-        dark: 'icons/search-dark.png'
-      },
-      'sort': {
-        selector: '#sortBtn img[alt="Sort"]',
-        light: 'icons/sort.png',
-        dark: 'icons/sort-dark.png'
-      },
-      'settings': {
-        selector: '#settingsBtn img[alt="Settings"]',
-        light: 'icons/settings.png',
-        dark: 'icons/settings-dark.png'
-      },
-      'add': {
-        selector: '#saveButton img[alt="Add"]',
-        light: 'icons/add.png',
-        dark: 'icons/add-dark.png'
-      },
-      'back': {
-        selector: '#settingsBack img[alt="Back"]',
-        light: 'icons/back.png',
-        dark: 'icons/back-dark.png'
-      },
-      'backup': {
-        selector: 'img[alt="Backup"]',
-        light: 'icons/backup.png',
-        dark: 'icons/backup-dark.png'
-      },
-      'restore': {
-        selector: 'img[alt="Restore"]',
-        light: 'icons/restore.png',
-        dark: 'icons/restore-dark.png'
-      },
-      'clearall': {
-        selector: 'img[alt="Clear All"]',
-        light: 'icons/clearall.png',
-        dark: 'icons/clearall-dark.png'
-      },
-      'badge': {
-        selector: '.settings-item img[alt="Badge"]',
-        light: 'icons/badge.png',
-        dark: 'icons/badge-dark.png'
-      }
-    };
-
-    // Update each icon based on theme
-    Object.values(iconMappings).forEach(icon => {
-      const elements = document.querySelectorAll(icon.selector);
+    // Update all cached icon elements
+    Object.entries(iconElements).forEach(([key, elements]) => {
+      const newSrc = key === 'icon' ?
+        `icons/icon-256${isDarkMode ? '-dark' : ''}.png` :
+        `icons/${key}${isDarkMode ? '-dark' : ''}.png`;
+      
       elements.forEach(element => {
-        if (element) {
-          const newSrc = isDarkMode ? icon.dark : icon.light;
-          if (!element.src.endsWith(newSrc)) {
-            element.src = newSrc;
-          }
+        if (element && !element.src.endsWith(newSrc)) {
+          element.src = newSrc;
         }
       });
     });
@@ -179,6 +140,33 @@ function filterItems(searchTerm) {
   updateItemCount(searchTerm ? `${visibleCount}/${items.length}` : items.length);
 }
 
+// Add debounce helper
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+// Optimize search with debouncing
+const debouncedFilter = debounce((searchTerm) => {
+  const items = document.querySelectorAll('.reading-item');
+  const searchLower = searchTerm.toLowerCase();
+  let visibleCount = 0;
+  
+  items.forEach(item => {
+    const link = item.querySelector('a');
+    const isVisible = link?.textContent.toLowerCase().includes(searchLower) || 
+                     link?.href.toLowerCase().includes(searchLower);
+    
+    item.classList.toggle('hidden', !isVisible);
+    if (isVisible) visibleCount++;
+  });
+  
+  updateItemCount(searchTerm ? `${visibleCount}/${items.length}` : items.length);
+}, 150);
+
 // Reading List Management
 function loadItems() {
   chrome.storage.local.get([STORAGE_KEYS.READING_LIST, STORAGE_KEYS.NEWEST_FIRST], function(result) {
@@ -187,16 +175,23 @@ function loadItems() {
     const container = document.getElementById('readingList');
     
     updateItemCount(readingList.length);
-    container.innerHTML = '';
-
-    // Create a copy of the array and sort it
+    
+    // Create document fragment for batch DOM update
+    const fragment = document.createDocumentFragment();
+    
+    // Sort the list
     const sortedList = [...readingList].sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
       return newestFirst ? dateB - dateA : dateA - dateB;
     });
 
-    sortedList.forEach(item => createReadingItem(item, container));
+    sortedList.forEach(item => createReadingItem(item, fragment));
+    
+    // Single DOM update
+    container.innerHTML = '';
+    container.appendChild(fragment);
+    
     resetSearch();
 
     // Update sort button title
