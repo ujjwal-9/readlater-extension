@@ -409,8 +409,8 @@ function loadItems() {
       const tooltipContent = [
         'Title: ' + (item.originalTitle || item.title),
         '',  // Empty line for spacing
-        'Added: ' + addedDate,
-        'Opened: ' + lastOpenedDate
+        'Date Added: ' + addedDate,
+        'Last Opened: ' + lastOpenedDate
       ].join('\n');
       
       div.title = tooltipContent;
