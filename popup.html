@@ -26,7 +26,7 @@
     }
 
     body {
-      width: 360px;
+      width: 400px;
       padding: 15px;
       font-family: Arial, sans-serif;
       margin: 0;
@@ -242,6 +242,42 @@
     .edit-mode .reading-item a:hover {
       background-color: rgba(0, 0, 0, 0.05);
     }
+    .search-container {
+      margin: 8px auto;
+      padding: 4px 0;
+      display: none;
+      animation: slideDown 0.2s ease-out;
+      width: 90%;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 12px;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+    }
+
+    .search-input::placeholder {
+      color: var(--text-color-light);
+    }
+
+    .reading-item.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -256,6 +292,9 @@
       </div>
     </div>
     <div class="actions">
+      <button id="searchBtn" class="action-btn">
+        Search
+      </button>
       <button id="editMode" class="action-btn">
         Edit
       </button>
@@ -265,6 +304,9 @@
       <button id="clearAll" class="action-btn">Clear All</button>
       <button id="saveButton" class="action-btn">Add</button>
     </div>
+  </div>
+  <div id="searchContainer" class="search-container">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search titles or URLs...">
   </div>
   <div id="readingList" class="reading-list"></div>
   <div id="confirmDialog" class="modal" style="display: none;">
