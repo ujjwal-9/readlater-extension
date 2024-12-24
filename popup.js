@@ -273,22 +273,46 @@ function showTitlePrompt(url, defaultTitle) {
   input.focus();
   input.select();
   
+  let isProcessing = false; // Add flag to prevent double processing
+  
+  // Function to handle saving
+  const handleSave = () => {
+    if (isProcessing) return; // Prevent double processing
+    isProcessing = true;
+    
+    const title = input.value.trim() || defaultTitle;
+    // Remove container only if it's still in the DOM
+    if (container.parentNode) {
+      container.remove();
+    }
+    saveItem(url, title);
+  };
+  
+  // Function to handle cancel
+  const handleCancel = () => {
+    if (isProcessing) return;
+    isProcessing = true;
+    
+    if (container.parentNode) {
+      container.remove();
+    }
+  };
+  
   // Handle input events
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
-      const title = input.value.trim() || defaultTitle;
-      container.remove();
-      saveItem(url, title);
+      e.preventDefault();
+      handleSave();
     } else if (e.key === 'Escape') {
-      container.remove();
+      e.preventDefault();
+      handleCancel();
     }
   });
   
   // Handle blur event
   input.addEventListener('blur', function() {
-    const title = input.value.trim() || defaultTitle;
-    container.remove();
-    saveItem(url, title);
+    // Small timeout to allow keydown event to process first
+    setTimeout(handleSave, 100);
   });
 }
 
