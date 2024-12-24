@@ -1,11 +1,42 @@
-// Initialize badge when browser starts
-chrome.runtime.onStartup.addListener(function() {
-  updateBadge();
+// Function to update icon based on theme
+async function updateIcon() {
+  try {
+    // Get system color scheme using chrome.system.display API
+    const isDark = await chrome.storage.local.get('isDarkMode');
+    
+    chrome.action.setIcon({
+      path: isDark ? {
+        "48": "icons/icon-48-dark.png",
+        "128": "icons/icon-128-dark.png",
+        "256": "icons/icon-256-dark.png"
+      } : {
+        "48": "icons/icon-48.png",
+        "128": "icons/icon-128.png",
+        "256": "icons/icon-256.png"
+      }
+    });
+  } catch (error) {
+    console.error('Error updating icon:', error);
+  }
+}
+
+// Update badge and icon when extension starts
+chrome.runtime.onStartup.addListener(async function() {
+  await updateBadge();
+  await updateIcon();
 });
 
 // Also handle installation/update
-chrome.runtime.onInstalled.addListener(function() {
-  updateBadge();
+chrome.runtime.onInstalled.addListener(async function() {
+  await updateBadge();
+  await updateIcon();
+});
+
+// Listen for theme change messages from popup
+chrome.runtime.onMessage.addListener(async function(message) {
+  if (message.type === 'themeChanged') {
+    await updateIcon();
+  }
 });
 
 function updateBadge() {

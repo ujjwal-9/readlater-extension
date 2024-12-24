@@ -137,6 +137,34 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('doneEditing').addEventListener('click', function() {
     exitEditMode();
   });
+
+  // Add this to your DOMContentLoaded event listener
+  function updateTheme() {
+    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    // Store the theme preference
+    chrome.storage.local.set({ isDarkMode }, function() {
+      // Notify background script of theme change
+      chrome.runtime.sendMessage({ type: 'themeChanged', isDarkMode });
+      
+      // Update badge background color based on theme
+      chrome.action.setBadgeBackgroundColor({ 
+        color: isDarkMode ? '#9aa0a6' : '#666666'
+      });
+
+      // Update header logo
+      const headerLogo = document.getElementById('headerLogo');
+      if (headerLogo) {
+        headerLogo.src = isDarkMode ? 'icons/icon-256-dark.png' : 'icons/icon-256.png';
+      }
+    });
+  }
+
+  // Listen for theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateTheme);
+
+  // Initial theme setup
+  updateTheme();
 });
 
 // Function to save the reading list to Chrome sync storage

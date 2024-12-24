@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Do Read Later",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Save pages to read later.",
   "permissions": ["storage", "activeTab", "tabs", "commands"],
   "action": {
