@@ -359,6 +359,46 @@ function loadItems() {
       const div = document.createElement('div');
       div.className = 'reading-item';
       
+      // Function to wrap text and align with proper indentation
+      const wrapText = (text, labelWidth) => {
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = '';
+        
+        words.forEach(word => {
+          if ((currentLine + word).length > 45) { // max line length
+            lines.push(currentLine);
+            currentLine = ' '.repeat(labelWidth) + word;
+          } else {
+            currentLine += (currentLine ? ' ' : '') + word;
+          }
+        });
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+        return lines;
+      };
+
+      // Format dates
+      const addedDate = new Date(item.date).toLocaleString();
+      const lastOpenedDate = item.lastOpened 
+        ? new Date(item.lastOpened).toLocaleString()
+        : 'Never';
+
+      // Create wrapped title lines
+      const titleLines = wrapText(item.title, 8); // 8 spaces for alignment with "Title: "
+      
+      // Create tooltip content
+      const tooltipContent = [
+        'Title: ' + titleLines[0],
+        ...titleLines.slice(1), // Add remaining wrapped lines if any
+        '',  // Empty line for spacing
+        'Added: ' + addedDate,
+        'Opened: ' + lastOpenedDate
+      ].join('\n');
+      
+      div.dataset.tooltip = tooltipContent;
+      
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'delete-btn';
       deleteBtn.innerHTML = '&times;';
@@ -400,6 +440,7 @@ function loadItems() {
       link.target = '_blank';
       
       link.textContent = item.title || item.url;
+      link.addEventListener('click', () => trackLinkOpen(item.url));
       div.appendChild(link);
 
       container.appendChild(div);
@@ -515,6 +556,22 @@ function updateTitle(url, newTitle) {
     if (itemIndex !== -1) {
       readingList[itemIndex].title = newTitle;
       chrome.storage.local.set({ readingList }, function() {
+        loadItems();
+      });
+    }
+  });
+}
+
+// Add this function to track when links are opened
+function trackLinkOpen(url) {
+  chrome.storage.local.get(['readingList'], function(result) {
+    const readingList = result.readingList || [];
+    const itemIndex = readingList.findIndex(item => item.url === url);
+    
+    if (itemIndex !== -1) {
+      readingList[itemIndex].lastOpened = new Date().toISOString();
+      chrome.storage.local.set({ readingList }, function() {
+        // Optional: Update the tooltip immediately
         loadItems();
       });
     }
