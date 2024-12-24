@@ -360,6 +360,25 @@ function saveItem(url, title) {
   });
 }
 
+// Add this helper function for date formatting
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  
+  // Format date as "12 Dec 2024"
+  const day = date.getDate();
+  const month = date.toLocaleString('en-US', { month: 'short' });
+  const year = date.getFullYear();
+  
+  // Format time as "12:23 PM"
+  const time = date.toLocaleString('en-US', { 
+    hour: 'numeric', 
+    minute: '2-digit', 
+    hour12: true 
+  });
+  
+  return `${day} ${month} ${year} - ${time}`;
+}
+
 function loadItems() {
   chrome.storage.local.get(['readingList', 'newestFirst'], function(result) {
     const readingList = result.readingList || [];
@@ -380,13 +399,13 @@ function loadItems() {
       const div = document.createElement('div');
       div.className = 'reading-item';
       
-      // Format dates
-      const addedDate = new Date(item.date).toLocaleString();
+      // Format dates using the new helper function
+      const addedDate = formatDate(item.date);
       const lastOpenedDate = item.lastOpened 
-        ? new Date(item.lastOpened).toLocaleString()
+        ? formatDate(item.lastOpened)
         : 'Never';
 
-      // Create tooltip content - show originalTitle only if it exists
+      // Create tooltip content
       const tooltipContent = [
         'Title: ' + (item.originalTitle || item.title),
         '',  // Empty line for spacing
@@ -443,7 +462,12 @@ function loadItems() {
           e.preventDefault(); // Prevent opening link in edit mode
           handleEditClick(e);
         } else {
+          e.preventDefault(); // Prevent default to handle tracking first
           trackLinkOpen(item.url);
+          // Open link after a small delay to ensure tracking is complete
+          setTimeout(() => {
+            window.open(item.url, '_blank');
+          }, 100);
         }
       });
       
@@ -566,8 +590,7 @@ function trackLinkOpen(url) {
     if (itemIndex !== -1) {
       readingList[itemIndex].lastOpened = new Date().toISOString();
       chrome.storage.local.set({ readingList }, function() {
-        // Optional: Update the tooltip immediately
-        loadItems();
+        loadItems(); // Refresh the list to update tooltips
       });
     }
   });
