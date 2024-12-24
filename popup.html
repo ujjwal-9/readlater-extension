@@ -263,7 +263,7 @@
 
     .search-input {
       width: 100%;
-      padding: 6px 8px;
+      padding: 6px 8px 6px 30px;
       border: 1px solid var(--border-color);
       border-radius: 4px;
       font-size: 12px;
@@ -300,6 +300,21 @@
       outline: none;
       border-color: var(--text-color-light);
     }
+
+    .search-input-wrapper {
+      position: relative;
+      width: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 8px;
+      width: 14px;
+      height: 14px;
+      opacity: var(--icon-opacity);
+    }
   </style>
 </head>
 <body>
@@ -328,7 +343,10 @@
     </div>
   </div>
   <div id="searchContainer" class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search titles or URLs...">
+    <div class="search-input-wrapper">
+      <img src="icons/search.png" class="search-icon" alt="Search">
+      <input type="text" id="searchInput" class="search-input" placeholder="Search titles or URLs...">
+    </div>
   </div>
   <div id="readingList" class="reading-list"></div>
   <div id="confirmDialog" class="modal" style="display: none;">

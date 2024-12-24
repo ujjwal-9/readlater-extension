@@ -187,8 +187,8 @@ document.addEventListener('DOMContentLoaded', function() {
         headerLogo.src = isDarkMode ? 'icons/icon-256-dark.png' : 'icons/icon-256.png';
       }
 
-      // Update search icon if it exists
-      const searchIcon = document.querySelector('#searchToggle img');
+      // Update search icon
+      const searchIcon = document.querySelector('.search-icon');
       if (searchIcon) {
         searchIcon.src = isDarkMode ? 'icons/search-dark.png' : 'icons/search.png';
       }
