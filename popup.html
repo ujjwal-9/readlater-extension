@@ -133,38 +133,56 @@
       font-size: 11px;
       margin-left: 8px;
     }
-    .modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-    .modal-content {
-      background: var(--bg-color);
-      padding: 15px;
-      border-radius: 4px;
-      width: 80%;
-      position: relative;
-      z-index: 1001;
-      color: var(--text-color);
-    }
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
+    .settings-confirm {
       margin-top: 15px;
+      padding: 12px;
+      background: var(--hover-bg);
+      border-radius: 4px;
+      display: none;
+      animation: slideDown 0.2s ease-out;
     }
-    #confirmClear {
+    .confirm-warning {
+      color: var(--text-color);
+      font-size: 12px;
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    .confirm-warning strong {
       color: #d32f2f;
+    }
+    .confirm-warning a {
+      color: var(--text-color);
+      text-decoration: underline;
+      opacity: 0.8;
+    }
+    .confirm-warning a:hover {
+      opacity: 1;
+    }
+    .confirm-input {
+      width: 100%;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    .confirm-input:focus {
+      outline: none;
+      border-color: var(--text-color-light);
+    }
+    #confirmClear:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    #confirmClear:not(:disabled) {
+      background-color: #d32f2f;
+      color: white;
       border-color: #d32f2f;
     }
-    #confirmClear:hover {
+    #confirmClear:not(:disabled):hover {
       background: #fff1f1;
     }
     .site-icon {
@@ -373,6 +391,7 @@
       height: 30px;
       border: none;
       background: none;
+      position: relative;
     }
 
     .action-icon {
@@ -390,6 +409,230 @@
       background: var(--hover-bg);
       border-radius: 4px;
     }
+
+    .settings-panel {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-color);
+      z-index: 1000;
+      display: none;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+    }
+
+    .settings-panel.show {
+      transform: translateX(0);
+      display: block;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      padding: 15px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .settings-back {
+      background: none;
+      border: none;
+      padding: 8px;
+      margin-right: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+
+    .settings-back:hover {
+      background: var(--hover-bg);
+    }
+
+    .settings-title {
+      font-size: 16px;
+      font-weight: normal;
+      margin: 0;
+      color: var(--text-color);
+    }
+
+    .settings-content {
+      padding: 15px;
+    }
+
+    .settings-section {
+      margin-bottom: 20px;
+    }
+
+    .settings-item {
+      display: flex;
+      align-items: flex-start;
+      padding: 12px 0;
+      cursor: pointer;
+      color: var(--text-color);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .settings-item:hover {
+      opacity: 0.8;
+    }
+
+    .settings-item img {
+      width: 16px;
+      height: 16px;
+      margin-right: 12px;
+      opacity: var(--icon-opacity);
+    }
+
+    .settings-item.danger {
+      color: #d32f2f;
+    }
+
+    .settings-item.danger img {
+      opacity: 0.8;
+    }
+
+    .confirm-input {
+      width: 100%;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .confirm-input:focus {
+      outline: none;
+      border-color: var(--text-color-light);
+    }
+
+    #confirmClear:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #confirmClear:not(:disabled) {
+      background-color: #d32f2f;
+      color: white;
+      border-color: #d32f2f;
+    }
+
+    #confirmClear:not(:disabled):hover {
+      background: #fff1f1;
+    }
+
+    .modal-content {
+      background: var(--bg-color);
+      padding: 20px;
+      border-radius: 4px;
+      width: 80%;
+      position: relative;
+      z-index: 1001;
+      color: var(--text-color);
+      max-width: 300px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .confirm-actions .action-btn {
+      min-width: 70px;
+      padding: 6px 12px;
+      font-size: 13px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      background: none;
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+    }
+
+    #confirmClear {
+      border: 1px solid var(--border-color);
+    }
+
+    #confirmClear:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #confirmClear:not(:disabled) {
+      background-color: #d32f2f;
+      color: white;
+      border-color: #d32f2f;
+    }
+
+    #confirmClear:not(:disabled):hover {
+      background: #fff1f1;
+    }
+
+    #cancelClear {
+      border: 1px solid var(--border-color);
+    }
+
+    #cancelClear:hover {
+      background-color: var(--hover-bg);
+    }
+
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+
+    .settings-section-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-color);
+      margin: 20px 0 10px;
+    }
+
+    .settings-item-content {
+      flex: 1;
+    }
+
+    .settings-item-title {
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+
+    .settings-item-description {
+      font-size: 11px;
+      color: var(--text-color-light);
+      margin-bottom: 8px;
+    }
+
+    .settings-action-btn {
+      display: inline-block;
+      padding: 4px 12px;
+      font-size: 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-color);
+      text-decoration: none;
+      cursor: pointer;
+      background: none;
+    }
+
+    .settings-action-btn:hover {
+      background: var(--hover-bg);
+    }
+
+    .settings-action-btn.danger {
+      color: #d32f2f;
+      border-color: #d32f2f;
+    }
+
+    .settings-action-btn.danger:hover {
+      background: #fff1f1;
+    }
   </style>
 </head>
 <body>
@@ -404,19 +647,28 @@
       </div>
     </div>
     <div class="actions">
-      <button id="searchBtn" class="action-btn icon-btn">
+      <button id="searchBtn" class="action-btn icon-btn"
+              title="Search items">
         <img src="icons/search.png" alt="Search" class="action-icon">
       </button>
-      <button id="editMode" class="action-btn icon-btn">
+      <button id="editMode" class="action-btn icon-btn"
+              title="Edit titles">
         <img src="icons/edit.png" alt="Edit" class="action-icon">
       </button>
-      <button id="doneEditing" class="action-btn icon-btn" style="display: none;">
+      <button id="doneEditing" class="action-btn icon-btn" style="display: none;"
+              title="Done editing">
         <img src="icons/done.png" alt="Done" class="action-icon">
       </button>
-      <button id="clearAll" class="action-btn icon-btn">
-        <img src="icons/clearall.png" alt="Clear All" class="action-icon">
+      <button id="sortBtn" class="action-btn icon-btn"
+              title="Sort by newest first">
+        <img src="icons/sort.png" alt="Sort" class="action-icon">
       </button>
-      <button id="saveButton" class="action-btn icon-btn">
+      <button id="settingsBtn" class="action-btn icon-btn"
+              title="Settings">
+        <img src="icons/settings.png" alt="Settings" class="action-icon">
+      </button>
+      <button id="saveButton" class="action-btn icon-btn"
+              title="Save current page">
         <img src="icons/add.png" alt="Add" class="action-icon">
       </button>
     </div>
@@ -437,32 +689,57 @@
 
   <div class="footer">
     <div class="footer-links">
-      <a href="https://github.com/ujjwal-9/readlater-extension/wiki/FAQ" target="_blank">FAQ</a>
+      <a href="https://github.com/ujjwal-9/readlater-extension/wiki" target="_blank">FAQ</a>
       <a href="https://github.com/ujjwal-9/readlater-extension" target="_blank">GitHub</a>
     </div>
-    <div class="footer-options">
-      <label class="footer-toggle">
-        <input type="checkbox" id="showBadge" checked>
-        Badge
-      </label>
-      <label class="footer-toggle">
-        <input type="checkbox" id="newestFirst" checked>
-        Reverse
-      </label>
-    </div>
     <div class="footer-actions">
-      <input type="file" id="uploadJson" accept=".json,.txt" style="display: none;">
-      <a href="#" id="uploadButton">Upload</a>
       <a href="#" id="downloadJson">Download</a>
     </div>
   </div>
 
-  <div id="confirmDialog" class="modal" style="display: none;">
-    <div class="modal-content">
-      <p>Are you sure you want to delete all saved items?</p>
-      <div class="modal-actions">
-        <button id="cancelClear" class="action-btn">Cancel</button>
-        <button id="confirmClear" class="action-btn">Delete All</button>
+  <div id="settingsPanel" class="settings-panel">
+    <div class="settings-header">
+      <button id="settingsBack" class="settings-back icon-btn"
+              title="Go back">
+        <img src="icons/back.png" alt="Back" class="action-icon">
+      </button>
+      <h2 class="settings-title">Settings</h2>
+    </div>
+    <div class="settings-content">
+      <h3 class="settings-section-title">Display</h3>
+      <div class="settings-section">
+        <label class="settings-item">
+          <input type="checkbox" id="settingsShowBadge">
+          Show badge count
+        </label>
+      </div>
+      <h3 class="settings-section-title">Data Management</h3>
+      <div class="settings-section">
+        <div class="settings-item">
+          <img src="icons/backup.png" alt="Backup">
+          <div class="settings-item-content">
+            <div class="settings-item-title">Backup Data</div>
+            <div class="settings-item-description">Download your reading list as JSON</div>
+            <a href="#" id="settingsDownload" class="settings-action-btn">Download</a>
+          </div>
+        </div>
+        <div class="settings-item">
+          <img src="icons/restore.png" alt="Restore">
+          <div class="settings-item-content">
+            <div class="settings-item-title">Restore Data</div>
+            <div class="settings-item-description">Import reading list from backup</div>
+            <input type="file" id="uploadJson" accept=".json,.txt" style="display: none;">
+            <a href="#" id="uploadButton" class="settings-action-btn">Upload</a>
+          </div>
+        </div>
+        <div class="settings-item danger">
+          <img src="icons/clearall.png" alt="Clear All">
+          <div class="settings-item-content">
+            <div class="settings-item-title">Clear Data</div>
+            <div class="settings-item-description">Delete all items from reading list</div>
+            <button id="settingsClearAll" class="settings-action-btn danger">Clear All</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
