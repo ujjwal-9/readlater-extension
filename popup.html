@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600&family=Inter:wght@400;500&family=Lato:wght@400;700&family=Open+Sans:wght@400;600&family=Roboto:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
   <style>
     /* Add these CSS variables for theming */
     :root {
@@ -32,8 +35,9 @@
       font-family: Arial, sans-serif;
       background-color: var(--bg-color);
       color: var(--text-color);
-      min-height: 200px;
-      max-height: 800px;
+      min-height: 400px;
+      max-height: 700px;
+      height: auto;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -365,6 +369,33 @@
       overflow-y: auto;
       padding: 0 15px;
       min-height: 100px;
+      max-height: calc(700px - 70px - 40px); /* Subtract header and footer heights */
+      height: auto;
+    }
+
+    /* Hide scrollbar by default */
+    .content-wrapper::-webkit-scrollbar {
+      width: 0;
+    }
+
+    /* Show scrollbar only when scrolling */
+    .content-wrapper.scrolling::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .content-wrapper.scrolling::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .content-wrapper.scrolling::-webkit-scrollbar-thumb {
+      background-color: var(--text-color-light);
+      border-radius: 3px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .content-wrapper:hover::-webkit-scrollbar-thumb {
+      opacity: 1;
     }
 
     .edit-mode-prompt {
@@ -425,7 +456,9 @@
 
     .settings-panel.show {
       transform: translateX(0);
-      display: block;
+      display: flex !important;
+      flex-direction: column;
+      height: 100%;
     }
 
     .settings-header {
@@ -433,6 +466,7 @@
       align-items: center;
       padding: 15px;
       border-bottom: 1px solid var(--border-color);
+      flex-shrink: 0;
     }
 
     .settings-back {
@@ -460,20 +494,24 @@
 
     .settings-content {
       padding: 15px;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
     }
 
     .settings-section {
-      margin-bottom: 20px;
+      margin-bottom: 12px;
     }
 
     .settings-item {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      padding: 12px 0;
+      padding: 8px 0;
       cursor: pointer;
       color: var(--text-color);
       border-bottom: 1px solid var(--border-color);
+      min-height: 40px;
     }
 
     .settings-item input[type="checkbox"] {
@@ -602,7 +640,7 @@
       font-size: 14px;
       font-weight: 500;
       color: var(--text-color);
-      margin: 20px 0 10px;
+      margin: 12px 0 8px;
     }
 
     .settings-item-content {
@@ -643,6 +681,59 @@
 
     .settings-action-btn.danger:hover {
       background: #fff1f1;
+    }
+
+    /* Add scrollbar styles for settings content */
+    .settings-content::-webkit-scrollbar {
+      width: 0;
+    }
+
+    .settings-content:hover::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .settings-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .settings-content::-webkit-scrollbar-thumb {
+      background-color: var(--text-color-light);
+      border-radius: 3px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .settings-content:hover::-webkit-scrollbar-thumb {
+      opacity: 1;
+    }
+
+    /* Add font selection styles */
+    .font-select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-size: 12px;
+      margin-top: 4px;
+      font-family: inherit;
+    }
+
+    .font-select:focus {
+      outline: none;
+      border-color: var(--text-color-light);
+    }
+
+    /* Add font preview */
+    .font-preview {
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--text-color);
+      line-height: 1.6;
     }
   </style>
 </head>
@@ -727,6 +818,27 @@
           </div>
           <input type="checkbox" id="settingsShowBadge">
         </label>
+        
+        <div class="settings-item">
+          <img src="icons/font.png" alt="Font" class="action-icon">
+          <div class="settings-item-content">
+            <div class="settings-item-title">Font</div>
+            <div class="settings-item-description">Choose the font for your reading list</div>
+            <select id="fontSelect" class="font-select">
+              <option value="system-ui">System Default</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Open Sans', sans-serif">Open Sans</option>
+              <option value="'Inter', sans-serif">Inter</option>
+              <option value="'Lato', sans-serif">Lato</option>
+              <option value="'Source Sans 3', sans-serif">Source Sans</option>
+              <option value="'EB Garamond', serif">Garamond</option>
+            </select>
+            <div id="fontPreview" class="font-preview">
+              The quick brown fox jumps over the lazy dog<br>
+              <span style="font-size: 11px">Small text: 0123456789</span><br>
+            </div>
+          </div>
+        </div>
       </div>
       <h3 class="settings-section-title">Data Management</h3>
       <div class="settings-section">

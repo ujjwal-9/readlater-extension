@@ -3,7 +3,8 @@ const STORAGE_KEYS = {
   READING_LIST: 'readingList',
   SHOW_BADGE: 'showBadge',
   IS_DARK_MODE: 'isDarkMode',
-  NEWEST_FIRST: 'newestFirst'
+  NEWEST_FIRST: 'newestFirst',
+  FONT_FAMILY: 'fontFamily'
 };
 
 // Cache DOM queries for icons
@@ -21,7 +22,8 @@ function cacheIconElements() {
     'backup': 'img[alt="Backup"]',
     'restore': 'img[alt="Restore"]',
     'clearall': 'img[alt="Clear All"]',
-    'badge': '.settings-item img[alt="Badge"]'
+    'badge': '.settings-item img[alt="Badge"]',
+    'font': '.settings-item img[alt="Font"]'
   };
 
   Object.entries(iconMappings).forEach(([key, selector]) => {
@@ -69,6 +71,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     loadItems();
     updateBadge();
+    setupScrollHandler();
 
     // Theme change listener
     window.matchMedia('(prefers-color-scheme: dark)')
@@ -111,8 +114,51 @@ function setupEventListeners() {
   });
 
   // Add search input handler
-  DOM.get('searchInput')?.addEventListener('input', e => debouncedFilter(e.target.value));
+  const searchInput = DOM.get('searchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', e => debouncedFilter(e.target.value));
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        toggleSearch(); // This will close search and reset the view
+      }
+    });
+  }
   DOM.get('settingsShowBadge')?.addEventListener('change', handleBadgeToggle);
+
+  // Add upload functionality
+  DOM.get('uploadButton')?.addEventListener('click', () => {
+    DOM.get('uploadJson')?.click();
+  });
+  
+  DOM.get('uploadJson')?.addEventListener('change', handleUpload);
+
+  // Add font selection handler
+  const fontSelect = DOM.get('fontSelect');
+  if (fontSelect) {
+    fontSelect.addEventListener('change', handleFontChange);
+    // Load saved font
+    chrome.storage.local.get([STORAGE_KEYS.FONT_FAMILY], function(result) {
+      if (result.fontFamily) {
+        fontSelect.value = result.fontFamily;
+        applyFont(result.fontFamily);
+      }
+    });
+  }
+
+  // Add global escape key handler
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      // Check if we're in search mode
+      if (DOM.get('searchContainer')?.style.display === 'block') {
+        toggleSearch();
+      }
+      // Check if we're in edit mode
+      else if (DOM.get('readingList')?.classList.contains('edit-mode')) {
+        exitEditMode();
+      }
+    }
+  });
 }
 
 // Theme Management
@@ -250,7 +296,11 @@ const debouncedFilter = debounce((searchTerm) => {
 
 // Reading List Management
 function loadItems() {
-  chrome.storage.local.get([STORAGE_KEYS.READING_LIST, STORAGE_KEYS.NEWEST_FIRST], function(result) {
+  chrome.storage.local.get([
+    STORAGE_KEYS.READING_LIST, 
+    STORAGE_KEYS.NEWEST_FIRST,
+    STORAGE_KEYS.FONT_FAMILY
+  ], function(result) {
     const readingList = result.readingList || [];
     const newestFirst = result.newestFirst !== false;
     const container = DOM.get('readingList');
@@ -290,6 +340,11 @@ function loadItems() {
     const sortBtn = DOM.get('sortBtn');
     if (sortBtn) {
       sortBtn.title = newestFirst ? "Sort by oldest first" : "Sort by newest first";
+    }
+
+    // Apply saved font
+    if (result.fontFamily) {
+      applyFont(result.fontFamily);
     }
   });
 }
@@ -626,6 +681,10 @@ async function handleTitleEdit(e) {
   input.value = link.textContent;
   input.className = 'edit-input';
   
+  // Store original text for cancellation
+  const originalText = link.textContent;
+  let isCanceling = false;
+  
   // Replace link with input
   link.style.display = 'none';
   item.insertBefore(input, link);
@@ -633,9 +692,10 @@ async function handleTitleEdit(e) {
   input.select();
   
   const saveEdit = async () => {
+    if (isCanceling) return;
     try {
       const newTitle = input.value.trim();
-      if (newTitle) {
+      if (newTitle && newTitle !== originalText) {
         // Get current reading list
         const result = await chrome.storage.local.get(STORAGE_KEYS.READING_LIST);
         const readingList = result.readingList || [];
@@ -657,6 +717,13 @@ async function handleTitleEdit(e) {
       link.style.display = '';
     }
   };
+
+  const cancelEdit = () => {
+    isCanceling = true;
+    input.remove();
+    link.style.display = '';
+    link.textContent = originalText;
+  };
   
   // Handle input events
   input.addEventListener('blur', saveEdit);
@@ -666,8 +733,7 @@ async function handleTitleEdit(e) {
       saveEdit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      input.remove();
-      link.style.display = '';
+      cancelEdit();
     }
   });
 }
@@ -818,4 +884,138 @@ function handleSort() {
       }
     });
   });
+}
+
+function setupScrollHandler() {
+  const contentWrapper = document.querySelector('.content-wrapper');
+  let scrollTimeout;
+
+  contentWrapper.addEventListener('scroll', function() {
+    // Add scrolling class
+    contentWrapper.classList.add('scrolling');
+    
+    // Clear existing timeout
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+    
+    // Set new timeout to remove scrolling class
+    scrollTimeout = setTimeout(() => {
+      contentWrapper.classList.remove('scrolling');
+    }, 1000); // Hide scrollbar 1 second after scrolling stops
+  });
+}
+
+// Add this new function for handling file uploads
+async function handleUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const uploadedList = JSON.parse(text);
+    
+    // Validate the uploaded data
+    if (!Array.isArray(uploadedList)) {
+      throw new Error('Invalid format: Expected an array');
+    }
+    
+    // Validate each item
+    const validList = uploadedList.filter(item => {
+      return item && 
+             typeof item === 'object' && 
+             typeof item.url === 'string' && 
+             typeof item.title === 'string' &&
+             typeof item.date === 'string';
+    });
+
+    if (validList.length === 0) {
+      throw new Error('No valid items found in the file');
+    }
+
+    // Get current reading list
+    const result = await storage.get(STORAGE_KEYS.READING_LIST);
+    const currentList = result.readingList || [];
+    
+    // Merge lists, avoiding duplicates
+    const mergedList = [...currentList];
+    let addedCount = 0;
+    
+    for (const item of validList) {
+      if (!mergedList.some(existing => existing.url === item.url)) {
+        mergedList.push(item);
+        addedCount++;
+      }
+    }
+
+    // Save merged list
+    await storage.set({
+      [STORAGE_KEYS.READING_LIST]: mergedList
+    });
+
+    // Show success message
+    showUploadStatus(`Added ${addedCount} new items`);
+    
+    // Reload items and update badge
+    loadItems();
+    updateBadge();
+    
+  } catch (error) {
+    console.error('Upload error:', error);
+    showUploadStatus('Error: Invalid file format', true);
+  }
+  
+  // Reset the file input
+  event.target.value = '';
+}
+
+// Add this helper function to show upload status
+function showUploadStatus(message, isError = false) {
+  const uploadButton = DOM.get('uploadButton');
+  if (!uploadButton) return;
+
+  const originalText = uploadButton.textContent;
+  uploadButton.textContent = message;
+  uploadButton.style.color = isError ? '#d32f2f' : '#4caf50';
+  
+  setTimeout(() => {
+    uploadButton.textContent = originalText;
+    uploadButton.style.color = '';
+  }, 2000);
+}
+
+// Add these new functions
+function handleFontChange(e) {
+  const fontFamily = e.target.value;
+  chrome.storage.local.set({ 
+    [STORAGE_KEYS.FONT_FAMILY]: fontFamily 
+  }, () => {
+    applyFont(fontFamily);
+  });
+}
+
+function applyFont(fontFamily) {
+  // Update preview
+  const preview = DOM.get('fontPreview');
+  if (preview) {
+    preview.style.fontFamily = fontFamily;
+  }
+  
+  // Update reading list
+  const readingList = DOM.get('readingList');
+  if (readingList) {
+    readingList.style.fontFamily = fontFamily;
+  }
+  
+  // Update search input
+  const searchInput = DOM.get('searchInput');
+  if (searchInput) {
+    searchInput.style.fontFamily = fontFamily;
+  }
+  
+  // Update font select
+  const fontSelect = DOM.get('fontSelect');
+  if (fontSelect) {
+    fontSelect.style.fontFamily = fontFamily;
+  }
 }
