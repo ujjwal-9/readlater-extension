@@ -248,7 +248,47 @@ loadReadingList();
 function saveCurrentPage() {
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
     const currentTab = tabs[0];
-    saveItem(currentTab.url, currentTab.title);
+    showTitlePrompt(currentTab.url, currentTab.title);
+  });
+}
+
+function showTitlePrompt(url, defaultTitle) {
+  // Create and show the title input container
+  const container = document.createElement('div');
+  container.className = 'title-prompt-container';
+  
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = defaultTitle;
+  input.className = 'title-prompt-input';
+  input.placeholder = 'Enter title and press Enter';
+  
+  container.appendChild(input);
+  
+  // Insert at the top of the reading list
+  const readingList = document.getElementById('readingList');
+  readingList.insertBefore(container, readingList.firstChild);
+  
+  // Focus the input
+  input.focus();
+  input.select();
+  
+  // Handle input events
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      const title = input.value.trim() || defaultTitle;
+      container.remove();
+      saveItem(url, title);
+    } else if (e.key === 'Escape') {
+      container.remove();
+    }
+  });
+  
+  // Handle blur event
+  input.addEventListener('blur', function() {
+    const title = input.value.trim() || defaultTitle;
+    container.remove();
+    saveItem(url, title);
   });
 }
 

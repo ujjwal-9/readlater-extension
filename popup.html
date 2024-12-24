@@ -278,6 +278,28 @@
     .reading-item.hidden {
       display: none;
     }
+
+    .title-prompt-container {
+      padding: 8px 0;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border-color);
+      animation: slideDown 0.2s ease-out;
+    }
+
+    .title-prompt-input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 12px;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+    }
+
+    .title-prompt-input:focus {
+      outline: none;
+      border-color: var(--text-color-light);
+    }
   </style>
 </head>
 <body>
