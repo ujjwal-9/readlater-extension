@@ -27,21 +27,30 @@
 
     body {
       width: 400px;
-      padding: 15px;
-      font-family: Arial, sans-serif;
       margin: 0;
-      border-radius: 8px;
-      overflow: hidden;
+      padding: 0;
+      font-family: Arial, sans-serif;
       background-color: var(--bg-color);
       color: var(--text-color);
+      min-height: 200px;
+      max-height: 600px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
     .header {
+      position: sticky;
+      top: 0;
+      background-color: var(--bg-color);
+      padding: 15px;
+      z-index: 10;
+      flex-shrink: 0;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
       border-bottom: 1px solid var(--border-color);
-      padding-bottom: 8px;
+      height: 70px;
+      box-sizing: border-box;
     }
     .title {
       font-size: 16px;
@@ -72,10 +81,12 @@
       background: var(--hover-bg);
     }
     .reading-list {
-      margin-top: 10px;
+      margin-top: 8px;
+      padding-bottom: 8px;
     }
     .reading-item {
-      padding: 3px 0;
+      padding: 1px 0;
+      height: 23px;
       display: flex;
       align-items: center;
     }
@@ -88,7 +99,7 @@
       -webkit-line-clamp: 1;
       -webkit-box-orient: vertical;
       overflow: hidden;
-      line-height: 1.2;
+      line-height: 1.5;
     }
     .reading-item a:hover {
       color: var(--text-color);
@@ -180,14 +191,21 @@
       margin: 0;
     }
     .footer {
-      margin-top: 12px;
-      padding-top: 8px;
+      position: sticky;
+      bottom: 0;
+      background-color: var(--bg-color);
+      padding: 12px 15px;
+      margin-top: 0;
       border-top: 1px solid var(--border-color);
+      flex-shrink: 0;
+      z-index: 10;
       display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 11px;
       color: var(--text-color-light);
+      height: 40px;
+      box-sizing: border-box;
     }
     .footer-links {
       display: flex;
@@ -243,11 +261,15 @@
       background-color: rgba(0, 0, 0, 0.05);
     }
     .search-container {
-      margin: 8px auto;
+      position: sticky;
+      top: 0;
+      background-color: var(--bg-color);
+      z-index: 5;
       padding: 4px 0;
+      margin: 8px auto;
+      width: 90%;
       display: none;
       animation: slideDown 0.2s ease-out;
-      width: 90%;
     }
 
     @keyframes slideDown {
@@ -315,6 +337,14 @@
       height: 14px;
       opacity: var(--icon-opacity);
     }
+
+    /* Add styles for the main content wrapper */
+    .content-wrapper {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 15px;
+      min-height: 100px;
+    }
   </style>
 </head>
 <body>
@@ -342,22 +372,17 @@
       <button id="saveButton" class="action-btn">Add</button>
     </div>
   </div>
-  <div id="searchContainer" class="search-container">
-    <div class="search-input-wrapper">
-      <img src="icons/search.png" class="search-icon" alt="Search">
-      <input type="text" id="searchInput" class="search-input" placeholder="Search titles or URLs...">
-    </div>
-  </div>
-  <div id="readingList" class="reading-list"></div>
-  <div id="confirmDialog" class="modal" style="display: none;">
-    <div class="modal-content">
-      <p>Are you sure you want to delete all saved items?</p>
-      <div class="modal-actions">
-        <button id="cancelClear" class="action-btn">Cancel</button>
-        <button id="confirmClear" class="action-btn">Delete All</button>
+  
+  <div class="content-wrapper">
+    <div id="searchContainer" class="search-container">
+      <div class="search-input-wrapper">
+        <img src="icons/search.png" class="search-icon" alt="Search">
+        <input type="text" id="searchInput" class="search-input" placeholder="Search titles or URLs...">
       </div>
     </div>
+    <div id="readingList" class="reading-list"></div>
   </div>
+
   <div class="footer">
     <div class="footer-links">
       <a href="https://github.com/ujjwal-9/readlater-extension/wiki/FAQ" target="_blank">FAQ</a>
@@ -379,6 +404,17 @@
       <a href="#" id="downloadJson">Download</a>
     </div>
   </div>
+
+  <div id="confirmDialog" class="modal" style="display: none;">
+    <div class="modal-content">
+      <p>Are you sure you want to delete all saved items?</p>
+      <div class="modal-actions">
+        <button id="cancelClear" class="action-btn">Cancel</button>
+        <button id="confirmClear" class="action-btn">Delete All</button>
+      </div>
+    </div>
+  </div>
+  
   <script src="popup.js"></script>
 </body>
 </html> 
