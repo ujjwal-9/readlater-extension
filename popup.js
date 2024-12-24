@@ -143,9 +143,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
     // Store the theme preference
-    chrome.storage.local.set({ isDarkMode }, function() {
+    chrome.storage.local.set({ isDarkMode: isDarkMode }, function() {
       // Notify background script of theme change
-      chrome.runtime.sendMessage({ type: 'themeChanged', isDarkMode });
+      chrome.runtime.sendMessage({ 
+        type: 'themeChanged', 
+        isDarkMode: isDarkMode 
+      });
       
       // Update badge background color based on theme
       chrome.action.setBadgeBackgroundColor({ 
@@ -156,6 +159,12 @@ document.addEventListener('DOMContentLoaded', function() {
       const headerLogo = document.getElementById('headerLogo');
       if (headerLogo) {
         headerLogo.src = isDarkMode ? 'icons/icon-256-dark.png' : 'icons/icon-256.png';
+      }
+
+      // Update search icon if it exists
+      const searchIcon = document.querySelector('#searchToggle img');
+      if (searchIcon) {
+        searchIcon.src = isDarkMode ? 'icons/search-dark.png' : 'icons/search.png';
       }
     });
   }

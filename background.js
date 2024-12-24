@@ -1,8 +1,9 @@
 // Function to update icon based on theme
 async function updateIcon() {
   try {
-    // Get system color scheme using chrome.system.display API
-    const isDark = await chrome.storage.local.get('isDarkMode');
+    // Get system color scheme using chrome.storage.local
+    const result = await chrome.storage.local.get('isDarkMode');
+    const isDark = result.isDarkMode; // Extract the boolean value
     
     chrome.action.setIcon({
       path: isDark ? {
