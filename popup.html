@@ -42,6 +42,9 @@
       flex-direction: column;
       overflow: hidden;
     }
+    body::-webkit-scrollbar {
+      display: none;
+    }
     .header {
       position: sticky;
       top: 0;
@@ -372,29 +375,17 @@
       max-height: calc(700px - 70px - 40px - 16px);
       height: auto;
     }
-
-    /* Hide scrollbar by default */
     .content-wrapper::-webkit-scrollbar {
-      width: 0;
-      display: none;
+      width: 4px;
     }
-
-    /* Show scrollbar only when scrolling */
-    .content-wrapper.scrolling::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .content-wrapper.scrolling::-webkit-scrollbar-track {
+    .content-wrapper::-webkit-scrollbar-track {
       background: transparent;
     }
-
-    .content-wrapper.scrolling::-webkit-scrollbar-thumb {
+    .content-wrapper::-webkit-scrollbar-thumb {
       background-color: var(--text-color-light);
-      border-radius: 3px;
+      border-radius: 2px;
       opacity: 0;
-      transition: opacity 0.3s;
     }
-
     .content-wrapper:hover::-webkit-scrollbar-thumb {
       opacity: 1;
     }
@@ -499,6 +490,9 @@
       flex: 1;
       min-height: 0;
       padding-bottom: 70px;
+    }
+    .settings-content::-webkit-scrollbar {
+      display: none;
     }
 
     .settings-section {
@@ -683,30 +677,6 @@
 
     .settings-action-btn.danger:hover {
       background: #fff1f1;
-    }
-
-    /* Add scrollbar styles for settings content */
-    .settings-content::-webkit-scrollbar {
-      width: 0;
-    }
-
-    .settings-content:hover::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .settings-content::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .settings-content::-webkit-scrollbar-thumb {
-      background-color: var(--text-color-light);
-      border-radius: 3px;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .settings-content:hover::-webkit-scrollbar-thumb {
-      opacity: 1;
     }
 
     /* Add font selection styles */
