@@ -33,14 +33,12 @@ const extensionUI = {
     if (state.iconTheme === isDark) return;
     
     state.iconTheme = isDark;
-    await Promise.all([
-      chrome.action.setIcon({
-        path: isDark ? THEME.ICONS.dark : THEME.ICONS.light
-      }),
-      chrome.action.setBadgeBackgroundColor({ 
-        color: isDark ? THEME.COLORS.dark : THEME.COLORS.light
-      })
-    ]);
+    await chrome.action.setIcon({
+      path: isDark ? THEME.ICONS.dark : THEME.ICONS.light
+    });
+    await chrome.action.setBadgeBackgroundColor({ 
+      color: isDark ? THEME.COLORS.dark : THEME.COLORS.light
+    });
   },
 
   async updateBadge(text, color) {
@@ -76,17 +74,11 @@ const extensionUI = {
 // Cached storage operations
 const storage = {
   async get(keys) {
-    return new Promise(resolve => {
-      // Handle both single key and array of keys
-      const keysToGet = Array.isArray(keys) ? keys : (keys ? [keys] : null);
-      chrome.storage.local.get(keysToGet, resolve);
-    });
+    return chrome.storage.local.get(keys);
   },
   
   async set(data) {
-    return new Promise(resolve => {
-      chrome.storage.local.set(data, resolve);
-    });
+    return chrome.storage.local.set(data);
   }
 };
 

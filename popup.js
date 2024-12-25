@@ -675,17 +675,14 @@ async function handleTitleEdit(e) {
   const item = link.closest('.reading-item');
   const url = link.href;
   
-  // Create edit input
   const input = document.createElement('input');
   input.type = 'text';
   input.value = link.textContent;
   input.className = 'edit-input';
   
-  // Store original text for cancellation
   const originalText = link.textContent;
   let isCanceling = false;
   
-  // Replace link with input
   link.style.display = 'none';
   item.insertBefore(input, link);
   input.focus();
@@ -693,39 +690,26 @@ async function handleTitleEdit(e) {
   
   const saveEdit = async () => {
     if (isCanceling) return;
-    try {
-      const newTitle = input.value.trim();
-      if (newTitle && newTitle !== originalText) {
-        // Get current reading list
-        const result = await chrome.storage.local.get(STORAGE_KEYS.READING_LIST);
-        const readingList = result.readingList || [];
-        const itemIndex = readingList.findIndex(item => item.url === url);
-        
-        if (itemIndex !== -1) {
-          readingList[itemIndex].title = newTitle;
-          await chrome.storage.local.set({
-            [STORAGE_KEYS.READING_LIST]: readingList
-          });
-          link.textContent = newTitle;
-        }
+    
+    const newTitle = input.value.trim();
+    if (newTitle && newTitle !== originalText) {
+      const result = await chrome.storage.local.get(STORAGE_KEYS.READING_LIST);
+      const readingList = result.readingList || [];
+      const itemIndex = readingList.findIndex(item => item.url === url);
+      
+      if (itemIndex !== -1) {
+        readingList[itemIndex].title = newTitle;
+        await chrome.storage.local.set({
+          [STORAGE_KEYS.READING_LIST]: readingList
+        });
+        link.textContent = newTitle;
       }
-    } catch (error) {
-      console.error('Error saving title:', error);
-    } finally {
-      // Cleanup
-      input.remove();
-      link.style.display = '';
     }
-  };
-
-  const cancelEdit = () => {
-    isCanceling = true;
+    
     input.remove();
     link.style.display = '';
-    link.textContent = originalText;
   };
-  
-  // Handle input events
+
   input.addEventListener('blur', saveEdit);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -733,7 +717,10 @@ async function handleTitleEdit(e) {
       saveEdit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      cancelEdit();
+      isCanceling = true;
+      input.remove();
+      link.style.display = '';
+      link.textContent = originalText;
     }
   });
 }
