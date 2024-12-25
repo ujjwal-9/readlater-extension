@@ -453,13 +453,13 @@
       display: none;
       transform: translateX(100%);
       transition: transform 0.3s ease;
+      overflow: hidden;
     }
 
     .settings-panel.show {
       transform: translateX(0);
       display: flex !important;
       flex-direction: column;
-      height: 100%;
     }
 
     .settings-header {
@@ -498,6 +498,7 @@
       overflow-y: auto;
       flex: 1;
       min-height: 0;
+      padding-bottom: 70px;
     }
 
     .settings-section {
@@ -736,6 +737,35 @@
       color: var(--text-color);
       line-height: 1.6;
     }
+
+    /* Add styles for settings footer */
+    .settings-footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background-color: var(--bg-color);
+      padding: 12px 15px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-color-light);
+      height: 40px;
+      box-sizing: border-box;
+      z-index: 1;
+    }
+
+    .settings-footer a {
+      color: var(--text-color-light);
+      text-decoration: none;
+      opacity: 0.8;
+    }
+
+    .settings-footer a:hover {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
@@ -868,6 +898,15 @@
             <button id="settingsClearAll" class="settings-action-btn danger">Clear All</button>
           </div>
         </div>
+      </div>
+    </div>
+    <div class="settings-footer">
+      <div class="footer-links">
+        <a href="https://github.com/ujjwal-9/readlater-extension/wiki" target="_blank">FAQ</a>
+        <a href="https://github.com/ujjwal-9/readlater-extension" target="_blank">GitHub</a>
+      </div>
+      <div class="footer-actions">
+        <a href="#" id="settingsDownloadJson">Download</a>
       </div>
     </div>
   </div>
