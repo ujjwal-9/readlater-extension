@@ -1019,16 +1019,3 @@ function applyFont(fontFamily) {
     fontSelect.style.fontFamily = fontFamily;
   }
 }
-
-// Update the settings content scroll handler
-const settingsContent = document.querySelector('.settings-content');
-let settingsTimeout;
-
-settingsContent.addEventListener('scroll', function() {
-    settingsContent.classList.add('scrolling');
-    
-    clearTimeout(settingsTimeout);
-    settingsTimeout = setTimeout(() => {
-        settingsContent.classList.remove('scrolling');
-    }, 1000);
-});
