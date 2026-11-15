@@ -1,1008 +1,501 @@
-// Constants
-const STORAGE_KEYS = {
-  READING_LIST: 'readingList',
-  SHOW_BADGE: 'showBadge',
-  IS_DARK_MODE: 'isDarkMode',
-  NEWEST_FIRST: 'newestFirst',
-  FONT_FAMILY: 'fontFamily'
+import { KEYS, getList, updateList, savePage, isSaveableUrl } from './shared.js';
+
+const $ = id => document.getElementById(id);
+
+const el = {
+  header: document.querySelector('.header'),
+  content: document.querySelector('.content-wrapper'),
+  list: $('readingList'),
+  count: $('linkCount'),
+  empty: $('emptyState'),
+  searchBtn: $('searchBtn'),
+  searchBox: $('searchContainer'),
+  searchInput: $('searchInput'),
+  editBtn: $('editMode'),
+  doneBtn: $('doneEditing'),
+  editHint: $('editModePrompt'),
+  sortBtn: $('sortBtn'),
+  addBtn: $('saveButton'),
+  addPrompt: $('titlePrompt'),
+  addInput: $('titlePromptInput'),
+  settingsBtn: $('settingsBtn'),
+  settings: $('settingsPanel'),
+  settingsBack: $('settingsBack'),
+  showBadge: $('settingsShowBadge'),
+  fontSelect: $('fontSelect'),
+  exportLinks: [$('downloadJson'), $('settingsDownload')],
+  importBtn: $('uploadButton'),
+  importFile: $('uploadJson'),
+  clearBtn: $('settingsClearAll'),
+  confirmDialog: $('confirmDialog'),
+  confirmMessage: $('confirmMessage'),
+  toast: $('toast'),
 };
 
-// Cache DOM queries for icons
-const iconElements = {};
-function cacheIconElements() {
-  const iconMappings = {
-    'icon': '#headerLogo',
-    'search': '#searchBtn img[alt="Search"], .search-icon',
-    'edit': '#editMode img[alt="Edit"]',
-    'done': '#doneEditing img[alt="Done"]',
-    'sort': '#sortBtn img[alt="Sort"]',
-    'settings': '#settingsBtn img[alt="Settings"]',
-    'add': '#saveButton img[alt="Add"]',
-    'back': '#settingsBack img[alt="Back"]',
-    'backup': 'img[alt="Backup"]',
-    'restore': 'img[alt="Restore"]',
-    'clearall': 'img[alt="Clear All"]',
-    'badge': '.settings-item img[alt="Badge"]',
-    'font': '.settings-item img[alt="Font"]'
-  };
-
-  Object.entries(iconMappings).forEach(([key, selector]) => {
-    iconElements[key] = document.querySelectorAll(selector);
-  });
-}
-
-// Add memoization for frequently used DOM elements
-const DOM = {
-  elements: new Map(),
-  get(id) {
-    if (!this.elements.has(id)) {
-      this.elements.set(id, document.getElementById(id));
-    }
-    return this.elements.get(id);
-  },
-  clear() {
-    this.elements.clear();
-  }
+const state = {
+  items: [],          // the stored list, unsorted
+  newestFirst: true,
+  query: '',
+  editing: false,
+  pendingPage: null,  // { url, pageTitle } while the "add page" prompt is open
+  shortcut: '',       // e.g. "⇧⌘L", shown in the empty state
 };
 
-// Add storage utility at the top of the file with other utilities
-const storage = {
-  async get(keys) {
-    return new Promise(resolve => {
-      const keysToGet = Array.isArray(keys) ? keys : (keys ? [keys] : null);
-      chrome.storage.local.get(keysToGet, resolve);
-    });
-  },
-  
-  async set(data) {
-    return new Promise(resolve => {
-      chrome.storage.local.set(data, resolve);
-    });
-  }
-};
+const darkScheme = matchMedia('(prefers-color-scheme: dark)');
 
-// Core initialization
-document.addEventListener('DOMContentLoaded', async function() {
-  try {
-    cacheIconElements();
-    
-    // Update theme and icon immediately
-    await updateTheme();
-    
-    loadItems();
-    updateBadge();
-    setupScrollHandler();
-
-    // Theme change listener
-    window.matchMedia('(prefers-color-scheme: dark)')
-      .addEventListener('change', updateTheme);
-
-    setupEventListeners();
-  } catch (error) {
-    console.error('Error during initialization:', error);
-  }
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
 });
 
-function setupEventListeners() {
-  // Use a single event listener for the document
-  document.addEventListener('click', function(e) {
-    const target = e.target;
-    
-    // Handle different button clicks
-    if (target.closest('#saveButton')) {
-      saveCurrentPage();
-    } else if (target.closest('#searchBtn')) {
-      toggleSearch();
-    } else if (target.closest('#editMode')) {
-      enterEditMode();
-    } else if (target.closest('#doneEditing')) {
-      exitEditMode();
-    } else if (target.closest('#settingsBtn')) {
-      showSettingsPanel();
-    } else if (target.closest('#settingsBack')) {
-      hideSettingsPanel();
-    } else if (target.closest('#settingsClearAll')) {
-      handleClearAll();
-    } else if (target.closest('#downloadJson')) {
-      downloadReadingList(e);
-    } else if (target.closest('#settingsDownload')) {
+init().catch(error => console.error('Read Later: popup failed to start', error));
+
+async function init() {
+  bindEvents();
+  syncTheme();
+
+  const [stored, commands] = await Promise.all([
+    chrome.storage.local.get([KEYS.LIST, KEYS.NEWEST_FIRST, KEYS.SHOW_BADGE, KEYS.FONT]),
+    chrome.commands.getAll(),
+  ]);
+  state.items = asList(stored[KEYS.LIST]);
+  state.newestFirst = stored[KEYS.NEWEST_FIRST] !== false;
+  state.shortcut = commands.find(c => c.name === 'save-page')?.shortcut ?? '';
+  el.showBadge.checked = stored[KEYS.SHOW_BADGE] !== false;
+  applyFont(stored[KEYS.FONT]);
+  updateSortButton();
+  render();
+
+  // Single source of truth: every change to the list (from here or from the
+  // keyboard shortcut) is stored first and rendered from this listener.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !(KEYS.LIST in changes)) return;
+    state.items = asList(changes[KEYS.LIST].newValue);
+    render();
+  });
+}
+
+function bindEvents() {
+  el.searchBtn.addEventListener('click', () => setSearchOpen(el.searchBox.hidden));
+  el.searchInput.addEventListener('input', debounce(() => {
+    state.query = el.searchInput.value;
+    render();
+  }, 100));
+
+  el.editBtn.addEventListener('click', () => setEditing(true));
+  el.doneBtn.addEventListener('click', () => setEditing(false));
+  el.sortBtn.addEventListener('click', toggleSort);
+  el.addBtn.addEventListener('click', promptForCurrentPage);
+
+  el.list.addEventListener('click', onListClick);
+  el.list.addEventListener('auxclick', onListClick);
+  // Favicon errors don't bubble, so listen in the capture phase.
+  el.list.addEventListener('error', e => e.target.classList?.add('missing'), true);
+
+  el.addInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
       e.preventDefault();
-      DOM.get('downloadJson')?.click();
-    } else if (target.closest('#sortBtn')) {
-      handleSort();
+      closeAddPrompt({ save: true });
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      closeAddPrompt({ save: false });
     }
   });
+  el.addInput.addEventListener('blur', () => closeAddPrompt({ save: true }));
 
-  // Add search input handler
-  const searchInput = DOM.get('searchInput');
-  if (searchInput) {
-    searchInput.addEventListener('input', e => debouncedFilter(e.target.value));
-    searchInput.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        toggleSearch(); // This will close search and reset the view
-      }
-    });
-  }
-  DOM.get('settingsShowBadge')?.addEventListener('change', handleBadgeToggle);
-
-  // Add upload functionality
-  DOM.get('uploadButton')?.addEventListener('click', () => {
-    DOM.get('uploadJson')?.click();
+  el.settingsBtn.addEventListener('click', () => setSettingsOpen(true));
+  el.settingsBack.addEventListener('click', () => setSettingsOpen(false));
+  el.showBadge.addEventListener('change', () =>
+    chrome.storage.local.set({ [KEYS.SHOW_BADGE]: el.showBadge.checked }));
+  el.fontSelect.addEventListener('change', () => {
+    applyFont(el.fontSelect.value);
+    chrome.storage.local.set({ [KEYS.FONT]: el.fontSelect.value });
   });
-  
-  DOM.get('uploadJson')?.addEventListener('change', handleUpload);
 
-  // Add font selection handler
-  const fontSelect = DOM.get('fontSelect');
-  if (fontSelect) {
-    fontSelect.addEventListener('change', handleFontChange);
-    // Load saved font
-    chrome.storage.local.get([STORAGE_KEYS.FONT_FAMILY], function(result) {
-      if (result.fontFamily) {
-        fontSelect.value = result.fontFamily;
-        applyFont(result.fontFamily);
-      }
+  for (const link of el.exportLinks) {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      exportList();
     });
   }
-
-  // Add global escape key handler
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-      // Check if we're in search mode
-      if (DOM.get('searchContainer')?.style.display === 'block') {
-        toggleSearch();
-      }
-      // Check if we're in edit mode
-      else if (DOM.get('readingList')?.classList.contains('edit-mode')) {
-        exitEditMode();
-      }
-    }
+  el.importBtn.addEventListener('click', e => {
+    e.preventDefault();
+    el.importFile.click();
   });
-}
-
-// Theme Management
-async function updateTheme() {
-  const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  
-  try {
-    // First update storage
-    await chrome.storage.local.set({ isDarkMode });
-    
-    // Notify background script to update icon
-    await new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: 'themeChanged', isDarkMode }, resolve);
-    });
-
-    // Update all cached icon elements in popup
-    Object.entries(iconElements).forEach(([key, elements]) => {
-      const newSrc = key === 'icon' ?
-        `icons/icon-256${isDarkMode ? '-dark' : ''}.png` :
-        `icons/${key}${isDarkMode ? '-dark' : ''}.png`;
-      
-      elements.forEach(element => {
-        if (element && !element.src.endsWith(newSrc)) {
-          element.src = newSrc;
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error updating theme:', error);
-  }
-}
-
-// Search Functionality
-function toggleSearch() {
-  const searchContainer = DOM.get('searchContainer');
-  const searchInput = DOM.get('searchInput');
-  const searchBtn = DOM.get('searchBtn');
-  
-  const isHidden = searchContainer.style.display === 'none' || !searchContainer.style.display;
-  
-  searchContainer.style.display = isHidden ? 'block' : 'none';
-  if (isHidden) {
-    searchInput?.focus();
-    searchBtn?.classList.add('active');
-  } else {
-    searchInput.value = '';
-    filterItems('');
-    searchBtn?.classList.remove('active');
-  }
-}
-
-function filterItems(searchTerm) {
-  const items = document.querySelectorAll('.reading-item');
-  const searchLower = searchTerm.toLowerCase().trim();
-  let visibleCount = 0;
-  
-  // If search is empty, show all items
-  if (!searchLower) {
-    items.forEach(item => {
-      item.style.display = '';
-    });
-    updateItemCount(items.length);
-    return;
-  }
-
-  // Split search terms for multiple word search
-  const searchTerms = searchLower.split(/\s+/);
-  
-  items.forEach(item => {
-    const link = item.querySelector('a');
-    if (!link) return;
-
-    const title = link.textContent.toLowerCase();
-    const url = link.href.toLowerCase();
-    const originalTitle = link.getAttribute('data-original-title')?.toLowerCase() || '';
-    
-    // Check if any search term matches any of these conditions:
-    // 1. Exact match in title, url, or original title
-    // 2. Word starts with search term
-    // 3. Search term is part of a word (minimum 3 characters)
-    const isVisible = searchTerms.every(term => {
-      // Skip very short search terms for partial matches
-      if (term.length < 2) {
-        return title.includes(term) || url.includes(term) || originalTitle.includes(term);
-      }
-
-      // Check for exact matches first
-      if (title.includes(term) || url.includes(term) || originalTitle.includes(term)) {
-        return true;
-      }
-
-      // Split into words and check for word starts
-      const titleWords = title.split(/\s+/);
-      const originalTitleWords = originalTitle.split(/\s+/);
-      
-      // Check if any word starts with the search term
-      const wordStartMatch = [...titleWords, ...originalTitleWords].some(word => 
-        word.startsWith(term)
-      );
-      if (wordStartMatch) return true;
-
-      // For longer search terms (3+ chars), check for partial matches within words
-      if (term.length >= 3) {
-        return titleWords.some(word => word.includes(term)) || 
-               originalTitleWords.some(word => word.includes(term));
-      }
-
-      return false;
-    });
-    
-    item.style.display = isVisible ? '' : 'none';
-    if (isVisible) visibleCount++;
+  el.importFile.addEventListener('change', () => {
+    const [file] = el.importFile.files;
+    el.importFile.value = ''; // allow re-importing the same file
+    if (file) importList(file);
   });
-  
-  updateItemCount(searchTerm ? `${visibleCount}/${items.length}` : items.length);
-}
 
-// Optimize debounce with a more efficient implementation
-function debounce(func, wait) {
-  let timeoutId;
-  return function executedFunction(...args) {
-    const later = () => {
-      timeoutId = null;
-      func(...args);
-    };
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(later, wait);
-  };
-}
-
-// Optimize search filtering
-const debouncedFilter = debounce((searchTerm) => {
-  filterItems(searchTerm);
-}, 150);
-
-// Reading List Management
-function loadItems() {
-  chrome.storage.local.get([
-    STORAGE_KEYS.READING_LIST, 
-    STORAGE_KEYS.NEWEST_FIRST,
-    STORAGE_KEYS.FONT_FAMILY
-  ], function(result) {
-    const readingList = result.readingList || [];
-    const newestFirst = result.newestFirst !== false;
-    const container = DOM.get('readingList');
-    
-    updateItemCount(readingList.length);
-    
-    // Create items in batches for better performance
-    const batchSize = 50;
-    const fragment = document.createDocumentFragment();
-    
-    // Sort the list once
-    const sortedList = [...readingList].sort((a, b) => {
-      const dateA = new Date(a.date);
-      const dateB = new Date(b.date);
-      return newestFirst ? dateB - dateA : dateA - dateB;
-    });
-
-    function processBatch(startIndex) {
-      const endIndex = Math.min(startIndex + batchSize, sortedList.length);
-      
-      for (let i = startIndex; i < endIndex; i++) {
-        createReadingItem(sortedList[i], fragment);
-      }
-      
-      if (endIndex < sortedList.length) {
-        requestAnimationFrame(() => processBatch(endIndex));
-      } else {
-        container.innerHTML = '';
-        container.appendChild(fragment);
-        resetSearch();
-      }
-    }
-
-    processBatch(0);
-
-    // Update sort button title
-    const sortBtn = DOM.get('sortBtn');
-    if (sortBtn) {
-      sortBtn.title = newestFirst ? "Sort by oldest first" : "Sort by newest first";
-    }
-
-    // Apply saved font
-    if (result.fontFamily) {
-      applyFont(result.fontFamily);
-    }
+  el.clearBtn.addEventListener('click', confirmClearAll);
+  el.confirmDialog.addEventListener('close', () => {
+    if (el.confirmDialog.returnValue === 'confirm') updateList(() => []);
   });
+  // A click on the dialog element itself (not its contents) is a backdrop click.
+  el.confirmDialog.addEventListener('click', e => {
+    if (e.target === el.confirmDialog) el.confirmDialog.close();
+  });
+
+  document.addEventListener('keydown', onEscape);
+  darkScheme.addEventListener('change', syncTheme);
 }
 
-// Optimize createReadingItem with element pooling
-const elementPool = {
-  items: [],
-  get() {
-    return this.items.pop() || document.createElement('div');
-  },
-  return(element) {
-    this.items.push(element);
+// ---------------------------------------------------------------- rendering
+
+function render() {
+  const terms = state.query.toLowerCase().split(/\s+/).filter(Boolean);
+  const visible = sortByDate(state.items, state.newestFirst).filter(item => matches(item, terms));
+
+  const fragment = document.createDocumentFragment();
+  for (const item of visible) fragment.append(renderItem(item));
+  el.list.replaceChildren(fragment);
+
+  el.count.textContent = terms.length
+    ? `${visible.length}/${state.items.length}`
+    : String(state.items.length);
+
+  el.empty.hidden = visible.length > 0;
+  if (!visible.length) {
+    el.empty.textContent = state.items.length
+      ? 'No matching items'
+      : `Nothing saved yet. Click + ${state.shortcut ? `or press ${state.shortcut} ` : ''}to save the current page.`;
   }
-};
-
-function createReadingItem(item, container) {
-  const div = elementPool.get();
-  div.className = 'reading-item';
-  
-  const deleteBtn = createDeleteButton(() => removeItem(item.url));
-  const favicon = createFavicon(item.url);
-  const link = createItemLink(item);
-  
-  // Add edit handler if in edit mode
-  if (DOM.get('readingList')?.classList.contains('edit-mode')) {
-    link.addEventListener('click', handleTitleEdit);
-  }
-  
-  div.innerHTML = '';
-  div.append(deleteBtn, favicon, link);
-  container.appendChild(div);
 }
 
-function createDeleteButton(onDelete) {
-  const btn = document.createElement('button');
-  btn.className = 'delete-btn';
-  btn.innerHTML = '&times;';
-  btn.onclick = onDelete;
-  return btn;
-}
+function renderItem(item) {
+  const title = item.title || item.url;
 
-function createFavicon(url) {
-  const favicon = document.createElement('img');
-  favicon.className = 'site-icon';
-  
-  try {
-    const urlObj = new URL(url);
-    favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}`;
-    favicon.onerror = () => favicon.style.display = 'none';
-  } catch {
-    favicon.style.display = 'none';
-  }
-  
-  return favicon;
-}
+  const row = document.createElement('div');
+  row.className = 'reading-item';
+  row.dataset.url = item.url; // the exact stored URL; link.href would normalize it
 
-function createItemLink(item) {
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'delete-btn';
+  remove.textContent = '×';
+  remove.title = 'Remove';
+  remove.setAttribute('aria-label', `Remove ${title}`);
+
+  const icon = document.createElement('img');
+  icon.className = 'site-icon';
+  icon.alt = '';
+  icon.loading = 'lazy';
+  const iconSrc = faviconUrl(item.url);
+  if (iconSrc) icon.src = iconSrc;
+  else icon.classList.add('missing');
+
   const link = document.createElement('a');
   link.href = item.url;
   link.target = '_blank';
-  link.textContent = item.title || item.url;
-  
-  // Store original title for search
-  if (item.originalTitle) {
-    link.setAttribute('data-original-title', item.originalTitle);
-  }
-  
-  // Format dates for tooltip
-  const addedDate = formatDate(item.date);
-  const lastOpenedDate = item.lastOpened ? formatDate(item.lastOpened) : 'Never';
-  
-  // Create tooltip content
-  const tooltipContent = [
-    `${item.originalTitle || item.title}`,
-    ``,
-    `Added: ${addedDate}`,
-    `Last Opened: ${lastOpenedDate}`
+  link.textContent = title;
+  link.title = [
+    item.originalTitle || title,
+    '',
+    `Added: ${formatDate(item.date)}`,
+    `Last Opened: ${item.lastOpened ? formatDate(item.lastOpened) : 'Never'}`,
   ].join('\n');
-  
-  link.title = tooltipContent;
-  
-  // Add click handler for normal mode
-  link.addEventListener('click', function(e) {
-    if (!DOM.get('readingList').classList.contains('edit-mode')) {
-      e.preventDefault();
-      trackLinkOpen(item.url);
-      window.open(item.url, '_blank');
-    }
-  });
-  
-  return link;
+
+  row.append(remove, icon, link);
+  return row;
 }
 
-// Add this helper function for date formatting
-function formatDate(dateString) {
-  const date = new Date(dateString);
-  return date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
+function matches(item, terms) {
+  if (!terms.length) return true;
+  const haystack = `${item.title ?? ''}\n${item.originalTitle ?? ''}\n${item.url}`.toLowerCase();
+  return terms.every(term => haystack.includes(term));
 }
 
-// Add this function to track when links are opened
-function trackLinkOpen(url) {
-  chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
-    const readingList = result.readingList || [];
-    const itemIndex = readingList.findIndex(item => item.url === url);
-    
-    if (itemIndex !== -1) {
-      readingList[itemIndex].lastOpened = new Date().toISOString();
-      chrome.storage.local.set({
-        [STORAGE_KEYS.READING_LIST]: readingList
-      });
-    }
-  });
+function sortByDate(items, newestFirst) {
+  const time = item => Date.parse(item.date) || 0;
+  const direction = newestFirst ? -1 : 1;
+  return [...items].sort((a, b) => direction * (time(a) - time(b)));
+}
+
+function faviconUrl(url) {
+  try {
+    const { protocol, hostname } = new URL(url);
+    if (!hostname || (protocol !== 'http:' && protocol !== 'https:')) return '';
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`;
+  } catch {
+    return '';
+  }
+}
+
+function formatDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unknown' : dateFormat.format(date);
+}
+
+// ------------------------------------------------------------------- items
+
+function onListClick(event) {
+  const row = event.target.closest('.reading-item');
+  if (!row) return;
+  const { url } = row.dataset;
+  const link = event.target.closest('a');
+  const isMiddleClick = event.type === 'auxclick';
+  if (isMiddleClick && (event.button !== 1 || !link)) return;
+
+  if (!isMiddleClick && event.target.closest('.delete-btn')) {
+    removeItem(url);
+    return;
+  }
+  if (!link) return;
+
+  event.preventDefault();
+  if (state.editing) startRename(row, link);
+  else openItem(url, { background: isMiddleClick || event.metaKey || event.ctrlKey });
+}
+
+async function openItem(url, { background = false } = {}) {
+  const now = new Date().toISOString();
+  // Write before opening: an active tab closes the popup and would cut the write off.
+  await updateList(list => list.map(item => (item.url === url ? { ...item, lastOpened: now } : item)));
+  await chrome.tabs.create({ url, active: !background });
 }
 
 function removeItem(url) {
-  chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
-    const readingList = result.readingList || [];
-    const updatedList = readingList.filter(item => item.url !== url);
-    
-    chrome.storage.local.set({
-      [STORAGE_KEYS.READING_LIST]: updatedList
-    }, function() {
-      loadItems();
-      updateBadge();
-    });
-  });
+  return updateList(list => list.filter(item => item.url !== url));
 }
 
-function updateBadge() {
-  chrome.storage.local.get([STORAGE_KEYS.READING_LIST, STORAGE_KEYS.SHOW_BADGE], function(result) {
-    const count = (result.readingList || []).length;
-    const showBadge = result.showBadge !== false;
-    
-    chrome.action.setBadgeText({ 
-      text: showBadge && count > 0 ? count.toString() : '' 
-    });
-  });
-}
+function startRename(row, link) {
+  if (row.querySelector('.edit-input')) return;
+  const { url } = row.dataset;
+  const original = link.textContent;
 
-// Helper Functions
-function updateItemCount(count) {
-  const linkCount = document.getElementById('linkCount');
-  if (linkCount) {
-    linkCount.textContent = count;
-  }
-}
-
-function resetSearch() {
-  const searchContainer = DOM.get('searchContainer');
-  const searchInput = DOM.get('searchInput');
-  const searchBtn = DOM.get('searchBtn');
-  
-  if (searchInput) {
-    searchInput.value = '';
-    searchContainer.style.display = 'none';
-    searchBtn?.classList.remove('active');
-    
-    // Show all items
-    const items = document.querySelectorAll('.reading-item');
-    items.forEach(item => {
-      item.style.display = '';
-    });
-  }
-}
-
-// Settings Panel Functions
-function showSettingsPanel() {
-  const panel = document.getElementById('settingsPanel');
-  panel.style.display = 'block';
-  setTimeout(() => panel.classList.add('show'), 0);
-}
-
-function hideSettingsPanel() {
-  const panel = document.getElementById('settingsPanel');
-  panel.classList.remove('show');
-  setTimeout(() => panel.style.display = 'none', 300);
-}
-
-function handleBadgeToggle(e) {
-  chrome.storage.local.set({ 
-    [STORAGE_KEYS.SHOW_BADGE]: e.target.checked 
-  }, updateBadge);
-}
-
-function handleClearAll() {
-  // Get the current reading list count first
-  chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
-    const readingList = result.readingList || [];
-    const itemCount = readingList.length;
-    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
-    // Create and style the confirmation dialog
-    const confirmDialog = document.createElement('div');
-    confirmDialog.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: var(--bg-color);
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      z-index: 1000;
-      width: 300px;
-      text-align: center;
-    `;
-
-    // Add icon and content with item count
-    confirmDialog.innerHTML = `
-      <div style="margin-bottom: 15px;">
-        <img src="icons/icon-128${isDarkMode ? '-dark' : ''}.png" alt="Read Later" style="width: 48px; height: 48px;">
-      </div>
-      <div style="margin-bottom: 20px; color: var(--text-color);">
-        Are you sure you want to delete all ${itemCount} items? This cannot be undone.
-      </div>
-      <div style="display: flex; justify-content: flex-end; gap: 10px;">
-        <button id="cancelClear" class="action-btn" style="padding: 8px 16px;">Cancel</button>
-        <button id="confirmClear" class="action-btn" 
-                style="padding: 8px 16px; border: 1px solid #d32f2f; background: none; color: #d32f2f;">Delete All</button>
-      </div>
-    `;
-
-    // Add overlay
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 999;
-    `;
-
-    // Add to document
-    document.body.appendChild(overlay);
-    document.body.appendChild(confirmDialog);
-
-    // Style the buttons with hover effects
-    const confirmBtn = document.getElementById('confirmClear');
-    if (confirmBtn) {
-      confirmBtn.addEventListener('mouseover', () => {
-        confirmBtn.style.background = '#fff1f1';
-      });
-      confirmBtn.addEventListener('mouseout', () => {
-        confirmBtn.style.background = 'none';
-      });
-    }
-
-    const cancelBtn = document.getElementById('cancelClear');
-    if (cancelBtn) {
-      cancelBtn.addEventListener('mouseover', () => {
-        cancelBtn.style.background = 'var(--hover-bg)';
-      });
-      cancelBtn.addEventListener('mouseout', () => {
-        cancelBtn.style.background = 'none';
-      });
-    }
-
-    // Handle button clicks
-    document.getElementById('cancelClear').onclick = () => {
-      overlay.remove();
-      confirmDialog.remove();
-    };
-
-    document.getElementById('confirmClear').onclick = () => {
-      chrome.storage.local.set({
-        [STORAGE_KEYS.READING_LIST]: []
-      }, function() {
-        loadItems();
-        updateBadge();
-        overlay.remove();
-        confirmDialog.remove();
-      });
-    };
-
-    // Close on overlay click
-    overlay.onclick = () => {
-      overlay.remove();
-      confirmDialog.remove();
-    };
-  });
-}
-
-// Edit Mode Functions
-function enterEditMode() {
-  DOM.get('editMode').style.display = 'none';
-  DOM.get('doneEditing').style.display = 'inline-block';
-  DOM.get('readingList').classList.add('edit-mode');
-  DOM.get('editModePrompt').classList.add('show');
-
-  // Add click handlers for editing titles
-  const items = document.querySelectorAll('.reading-item');
-  items.forEach(item => {
-    const link = item.querySelector('a');
-    if (link) {
-      link.addEventListener('click', handleTitleEdit);
-    }
-  });
-}
-
-function exitEditMode() {
-  DOM.get('editMode').style.display = 'inline-block';
-  DOM.get('doneEditing').style.display = 'none';
-  DOM.get('readingList').classList.remove('edit-mode');
-  DOM.get('editModePrompt').classList.remove('show');
-
-  // Remove click handlers for editing titles
-  const items = document.querySelectorAll('.reading-item');
-  items.forEach(item => {
-    const link = item.querySelector('a');
-    if (link) {
-      link.removeEventListener('click', handleTitleEdit);
-    }
-  });
-}
-
-async function handleTitleEdit(e) {
-  e.preventDefault();
-  const link = e.target;
-  const item = link.closest('.reading-item');
-  const url = link.href;
-  
   const input = document.createElement('input');
   input.type = 'text';
-  input.value = link.textContent;
   input.className = 'edit-input';
-  
-  const originalText = link.textContent;
-  let isCanceling = false;
-  
-  link.style.display = 'none';
-  item.insertBefore(input, link);
+  input.value = original;
+  input.setAttribute('aria-label', 'Title');
+  link.hidden = true;
+  link.before(input);
   input.focus();
   input.select();
-  
-  const saveEdit = async () => {
-    if (isCanceling) return;
-    
-    const newTitle = input.value.trim();
-    if (newTitle && newTitle !== originalText) {
-      const result = await chrome.storage.local.get(STORAGE_KEYS.READING_LIST);
-      const readingList = result.readingList || [];
-      const itemIndex = readingList.findIndex(item => item.url === url);
-      
-      if (itemIndex !== -1) {
-        readingList[itemIndex].title = newTitle;
-        await chrome.storage.local.set({
-          [STORAGE_KEYS.READING_LIST]: readingList
-        });
-        link.textContent = newTitle;
-      }
+
+  let finished = false;
+  const finish = async save => {
+    if (finished) return;
+    finished = true;
+    const title = input.value.trim();
+    if (save && title && title !== original) {
+      await updateList(list => list.map(item => (item.url === url ? { ...item, title } : item)));
+      link.textContent = title;
     }
-    
+    // On a real change the storage listener re-renders the row anyway.
     input.remove();
-    link.style.display = '';
+    link.hidden = false;
   };
 
-  input.addEventListener('blur', saveEdit);
-  input.addEventListener('keydown', (e) => {
+  input.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      saveEdit();
+      finish(true);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      isCanceling = true;
-      input.remove();
-      link.style.display = '';
-      link.textContent = originalText;
+      e.stopPropagation(); // cancel the rename, but stay in edit mode
+      finish(false);
     }
   });
+  input.addEventListener('blur', () => finish(true));
 }
 
-// Save Page Functions
-function saveCurrentPage() {
-  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-    const currentTab = tabs[0];
-    showTitlePrompt(currentTab.url, currentTab.title);
-  });
+// ---------------------------------------------------------- add a new page
+
+async function promptForCurrentPage() {
+  if (state.pendingPage) {
+    el.addInput.focus();
+    return;
+  }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !isSaveableUrl(tab.url)) {
+    toast("This page can't be saved", { error: true });
+    return;
+  }
+  if (state.items.some(item => item.url === tab.url)) {
+    toast('Already in your list');
+    return;
+  }
+  state.pendingPage = { url: tab.url, pageTitle: tab.title || tab.url };
+  el.addInput.value = state.pendingPage.pageTitle;
+  el.addPrompt.hidden = false;
+  el.addInput.focus();
+  el.addInput.select();
 }
 
-function showTitlePrompt(url, defaultTitle) {
-  const container = document.createElement('div');
-  container.className = 'title-prompt-container';
-  
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.value = defaultTitle;
-  input.className = 'title-prompt-input';
-  input.placeholder = 'Enter title and press Enter';
-  
-  container.appendChild(input);
-  
-  const readingList = DOM.get('readingList');
-  readingList.insertBefore(container, readingList.firstChild);
-  
-  input.focus();
-  input.select();
-  
-  let isProcessing = false;
-  
-  const handleSave = async () => {
-    if (isProcessing) return;
-    isProcessing = true;
-    
-    const userTitle = input.value.trim() || defaultTitle;
-    container.remove();
-    
-    // Get both reading list and sort order
-    const result = await storage.get([STORAGE_KEYS.READING_LIST, STORAGE_KEYS.NEWEST_FIRST]);
-    const readingList = result.readingList || [];
-    const newestFirst = result.newestFirst !== false;
-    const urlExists = readingList.some(item => item.url === url);
-    
-    if (!urlExists) {
-      const newItem = {
-        url: url,
-        title: userTitle,
-        originalTitle: defaultTitle,
-        date: new Date().toISOString()
-      };
-      
-      readingList.push(newItem);
-      
-      await storage.set({
-        [STORAGE_KEYS.READING_LIST]: readingList
-      });
-
-      // Sort the list according to current sort order
-      const sortedList = [...readingList].sort((a, b) => {
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        return newestFirst ? dateB - dateA : dateA - dateB;
-      });
-
-      // Find the correct position for the new item
-      const newItemIndex = sortedList.findIndex(item => item.url === url);
-      
-      // Create the new item
-      const fragment = document.createDocumentFragment();
-      createReadingItem(newItem, fragment);
-      
-      // Add edit handler if in edit mode
-      if (DOM.get('readingList').classList.contains('edit-mode')) {
-        const link = fragment.querySelector('a');
-        if (link) {
-          link.addEventListener('click', handleTitleEdit);
-        }
-      }
-      
-      // Insert at the correct position
-      const container = DOM.get('readingList');
-      const items = container.children;
-      if (newItemIndex < items.length) {
-        container.insertBefore(fragment, items[newItemIndex]);
-      } else {
-        container.appendChild(fragment);
-      }
-      
-      updateBadge();
-    }
-  };
-  
-  const handleCancel = () => {
-    if (isProcessing) return;
-    isProcessing = true;
-    container.remove();
-  };
-  
-  input.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleSave();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      handleCancel();
-    }
-  });
-  
-  input.addEventListener('blur', function() {
-    setTimeout(handleSave, 100);
-  });
+async function closeAddPrompt({ save }) {
+  const page = state.pendingPage;
+  if (!page) return;
+  state.pendingPage = null;
+  el.addPrompt.hidden = true;
+  if (!save) return;
+  const title = el.addInput.value.trim() || page.pageTitle;
+  const result = await savePage({ url: page.url, title, pageTitle: page.pageTitle });
+  if (result === 'exists') toast('Already in your list');
 }
 
-// Download Function
-function downloadReadingList(e) {
-  e.preventDefault();
-  chrome.storage.local.get([STORAGE_KEYS.READING_LIST], function(result) {
-    const readingList = result.readingList || [];
-    const blob = new Blob([JSON.stringify(readingList, null, 2)], {
-      type: 'application/json'
-    });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'readlater-list.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
+// --------------------------------------------------------- header controls
+
+function setSearchOpen(open) {
+  el.searchBox.hidden = !open;
+  el.searchBtn.setAttribute('aria-pressed', String(open));
+  if (open) {
+    el.searchInput.focus();
+  } else if (state.query || el.searchInput.value) {
+    el.searchInput.value = '';
+    state.query = '';
+    render();
+  }
 }
 
-// Add these new functions
-function handleSort() {
-  chrome.storage.local.get([STORAGE_KEYS.NEWEST_FIRST], function(result) {
-    const newestFirst = !result.newestFirst; // Toggle the sort order
-    chrome.storage.local.set({ 
-      [STORAGE_KEYS.NEWEST_FIRST]: newestFirst 
-    }, function() {
-      loadItems();
-      // Update the sort button title
-      const sortBtn = document.getElementById('sortBtn');
-      if (sortBtn) {
-        sortBtn.title = newestFirst ? "Sort by oldest first" : "Sort by newest first";
-      }
-    });
-  });
+function setEditing(on) {
+  state.editing = on;
+  el.list.classList.toggle('edit-mode', on);
+  el.editBtn.hidden = on;
+  el.doneBtn.hidden = !on;
+  el.editHint.hidden = !on;
 }
 
-function setupScrollHandler() {
-  const contentWrapper = document.querySelector('.content-wrapper');
-  let scrollTimeout;
-
-  contentWrapper.addEventListener('scroll', function() {
-    // Add scrolling class
-    contentWrapper.classList.add('scrolling');
-    
-    // Clear existing timeout
-    if (scrollTimeout) {
-      clearTimeout(scrollTimeout);
-    }
-    
-    // Set new timeout to remove scrolling class
-    scrollTimeout = setTimeout(() => {
-      contentWrapper.classList.remove('scrolling');
-    }, 1000); // Hide scrollbar 1 second after scrolling stops
-  });
+function toggleSort() {
+  state.newestFirst = !state.newestFirst;
+  updateSortButton();
+  render();
+  chrome.storage.local.set({ [KEYS.NEWEST_FIRST]: state.newestFirst });
 }
 
-// Add this new function for handling file uploads
-async function handleUpload(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
+function updateSortButton() {
+  el.sortBtn.title = state.newestFirst ? 'Sort by oldest first' : 'Sort by newest first';
+}
 
+function onEscape(event) {
+  if (event.key !== 'Escape' || el.confirmDialog.open) return; // the dialog handles its own
+  if (el.settings.classList.contains('open')) setSettingsOpen(false);
+  else if (!el.searchBox.hidden) setSearchOpen(false);
+  else if (state.editing) setEditing(false);
+  else return; // nothing to close: let Escape close the popup
+  event.preventDefault();
+}
+
+// ---------------------------------------------------------------- settings
+
+function setSettingsOpen(open) {
+  el.settings.classList.toggle('open', open);
+  // Keep keyboard focus out of the list while settings cover it.
+  el.header.inert = open;
+  el.content.inert = open;
+}
+
+function applyFont(value) {
+  const options = [...el.fontSelect.options];
+  const option = options.find(o => o.value === value) ?? options[0];
+  el.fontSelect.value = option.value;
+  loadWebFont(option.dataset.googleFont);
+  document.documentElement.style.setProperty('--list-font', option.value);
+}
+
+/** Fetch a Google Font only once someone picks it, instead of on every popup open. */
+function loadWebFont(family) {
+  if (!family || document.querySelector(`link[data-font="${family}"]`)) return;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
+  link.dataset.font = family;
+  document.head.append(link);
+}
+
+async function exportList() {
+  const blob = new Blob([JSON.stringify(await getList(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `readlater-list-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function importList(file) {
+  let data;
   try {
-    const text = await file.text();
-    const uploadedList = JSON.parse(text);
-    
-    // Validate the uploaded data
-    if (!Array.isArray(uploadedList)) {
-      throw new Error('Invalid format: Expected an array');
-    }
-    
-    // Validate each item
-    const validList = uploadedList.filter(item => {
-      return item && 
-             typeof item === 'object' && 
-             typeof item.url === 'string' && 
-             typeof item.title === 'string' &&
-             typeof item.date === 'string';
-    });
-
-    if (validList.length === 0) {
-      throw new Error('No valid items found in the file');
-    }
-
-    // Get current reading list
-    const result = await storage.get(STORAGE_KEYS.READING_LIST);
-    const currentList = result.readingList || [];
-    
-    // Merge lists, avoiding duplicates
-    const mergedList = [...currentList];
-    let addedCount = 0;
-    
-    for (const item of validList) {
-      if (!mergedList.some(existing => existing.url === item.url)) {
-        mergedList.push(item);
-        addedCount++;
-      }
-    }
-
-    // Save merged list
-    await storage.set({
-      [STORAGE_KEYS.READING_LIST]: mergedList
-    });
-
-    // Show success message
-    showUploadStatus(`Added ${addedCount} new items`);
-    
-    // Reload items and update badge
-    loadItems();
-    updateBadge();
-    
-  } catch (error) {
-    console.error('Upload error:', error);
-    showUploadStatus('Error: Invalid file format', true);
+    data = JSON.parse(await file.text());
+  } catch {
+    toast("That file isn't valid JSON", { error: true });
+    return;
   }
-  
-  // Reset the file input
-  event.target.value = '';
-}
+  const incoming = Array.isArray(data) ? data.map(normalizeImportedItem).filter(Boolean) : [];
+  if (!incoming.length) {
+    toast('No valid items found in that file', { error: true });
+    return;
+  }
 
-// Add this helper function to show upload status
-function showUploadStatus(message, isError = false) {
-  const uploadButton = DOM.get('uploadButton');
-  if (!uploadButton) return;
-
-  const originalText = uploadButton.textContent;
-  uploadButton.textContent = message;
-  uploadButton.style.color = isError ? '#d32f2f' : '#4caf50';
-  
-  setTimeout(() => {
-    uploadButton.textContent = originalText;
-    uploadButton.style.color = '';
-  }, 2000);
-}
-
-// Add these new functions
-function handleFontChange(e) {
-  const fontFamily = e.target.value;
-  chrome.storage.local.set({ 
-    [STORAGE_KEYS.FONT_FAMILY]: fontFamily 
-  }, () => {
-    applyFont(fontFamily);
+  let added = 0;
+  await updateList(list => {
+    const known = new Set(list.map(item => item.url));
+    const fresh = [];
+    for (const item of incoming) {
+      if (known.has(item.url)) continue; // already saved, or repeated within the file
+      known.add(item.url);
+      fresh.push(item);
+    }
+    added = fresh.length;
+    return added ? [...list, ...fresh] : list;
   });
+  toast(added ? `Imported ${added} new item${added === 1 ? '' : 's'}` : 'Everything in that file is already saved');
 }
 
-function applyFont(fontFamily) {
-  // Update preview
-  const preview = DOM.get('fontPreview');
-  if (preview) {
-    preview.style.fontFamily = fontFamily;
+/** Accept only well-formed entries with a safe URL; fill in what's missing. */
+function normalizeImportedItem(raw) {
+  if (!raw || typeof raw !== 'object' || typeof raw.url !== 'string' || !isSaveableUrl(raw.url)) return null;
+  const isDate = value => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+  const item = {
+    url: raw.url,
+    title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : raw.url,
+    date: isDate(raw.date) ? raw.date : new Date().toISOString(),
+  };
+  if (typeof raw.originalTitle === 'string') item.originalTitle = raw.originalTitle;
+  if (isDate(raw.lastOpened)) item.lastOpened = raw.lastOpened;
+  return item;
+}
+
+function confirmClearAll() {
+  const count = state.items.length;
+  if (!count) {
+    toast('Your list is already empty');
+    return;
   }
-  
-  // Update reading list
-  const readingList = DOM.get('readingList');
-  if (readingList) {
-    readingList.style.fontFamily = fontFamily;
-  }
-  
-  // Update search input
-  const searchInput = DOM.get('searchInput');
-  if (searchInput) {
-    searchInput.style.fontFamily = fontFamily;
-  }
-  
-  // Update font select
-  const fontSelect = DOM.get('fontSelect');
-  if (fontSelect) {
-    fontSelect.style.fontFamily = fontFamily;
-  }
+  el.confirmMessage.textContent = count === 1
+    ? 'Are you sure you want to delete the 1 saved item? This cannot be undone.'
+    : `Are you sure you want to delete all ${count} items? This cannot be undone.`;
+  el.confirmDialog.returnValue = '';
+  el.confirmDialog.showModal();
+}
+
+// -------------------------------------------------------------------- misc
+
+/** The toolbar icon lives in the service worker, which can't see the color scheme. */
+async function syncTheme() {
+  const isDark = darkScheme.matches;
+  const { [KEYS.DARK_MODE]: stored } = await chrome.storage.local.get(KEYS.DARK_MODE);
+  if (stored !== isDark) await chrome.storage.local.set({ [KEYS.DARK_MODE]: isDark });
+}
+
+let toastTimer;
+function toast(message, { error = false } = {}) {
+  el.toast.textContent = message;
+  el.toast.classList.toggle('error', error);
+  el.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.toast.hidden = true; }, 2500);
+}
+
+function asList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function debounce(fn, wait) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
 }

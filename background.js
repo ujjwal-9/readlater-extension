@@ -1,151 +1,62 @@
-// Cache icon paths and badge colors
-const THEME = {
-  ICONS: {
-    light: {
-      "48": "icons/icon-48.png",
-      "128": "icons/icon-128.png",
-      "256": "icons/icon-256.png"
-    },
-    dark: {
-      "48": "icons/icon-48-dark.png",
-      "128": "icons/icon-128-dark.png",
-      "256": "icons/icon-256-dark.png"
-    }
-  },
-  COLORS: {
-    light: '#666666',
-    dark: '#9aa0a6'
-  }
-};
+import { KEYS, TOOLBAR_ICONS, savePage } from './shared.js';
 
-// Cache states
-const state = {
-  iconTheme: null,
-  badgeText: '',
-  badgeColor: '',
-  updateTimeout: null,
-  pendingUpdates: new Set()
-};
+const BADGE_COLOR = '#666666';
+const ERROR_COLOR = '#d32f2f';
+const FLASH_MS = 1500;
 
-// Optimize icon and badge updates
-const extensionUI = {
-  async updateIcon(isDark) {
-    if (state.iconTheme === isDark) return;
-    
-    state.iconTheme = isDark;
-    await chrome.action.setIcon({
-      path: isDark ? THEME.ICONS.dark : THEME.ICONS.light
-    });
-    await chrome.action.setBadgeBackgroundColor({ 
-      color: isDark ? THEME.COLORS.dark : THEME.COLORS.light
-    });
-  },
+let flashTimer = null;
 
-  async updateBadge(text, color) {
-    const updates = [];
-    
-    if (text !== state.badgeText) {
-      state.badgeText = text;
-      updates.push(chrome.action.setBadgeText({ text }));
-    }
-    
-    if (color !== state.badgeColor) {
-      state.badgeColor = color;
-      updates.push(chrome.action.setBadgeBackgroundColor({ color }));
-    }
-    
-    if (updates.length) {
-      await Promise.all(updates);
-    }
-  },
-
-  scheduleBadgeUpdate(text, color) {
-    if (state.updateTimeout) {
-      clearTimeout(state.updateTimeout);
-    }
-    
-    state.updateTimeout = setTimeout(() => {
-      this.updateBadge(text, color);
-      state.updateTimeout = null;
-    }, 16);
-  }
-};
-
-// Cached storage operations
-const storage = {
-  async get(keys) {
-    return chrome.storage.local.get(keys);
-  },
-  
-  async set(data) {
-    return chrome.storage.local.set(data);
-  }
-};
-
-// Main functions
-async function handleThemeChange() {
-  const result = await storage.get('isDarkMode');
-  await extensionUI.updateIcon(result.isDarkMode);
+/** Show the item count on the toolbar icon, unless the user turned the badge off. */
+async function refreshBadge() {
+  const { [KEYS.LIST]: list, [KEYS.SHOW_BADGE]: showBadge = true } =
+    await chrome.storage.local.get([KEYS.LIST, KEYS.SHOW_BADGE]);
+  if (flashTimer) return; // a ✓/✕ is showing; the flash restores the count when it ends
+  const count = Array.isArray(list) ? list.length : 0;
+  await chrome.action.setBadgeText({ text: showBadge && count ? String(count) : '' });
 }
 
-async function updateBadgeCount() {
-  const result = await storage.get(['readingList', 'showBadge']);
-  const count = (result.readingList || []).length;
-  const showBadge = result.showBadge !== false;
-  const text = showBadge && count > 0 ? count.toString() : '';
-  
-  extensionUI.scheduleBadgeUpdate(text, THEME.COLORS.light);
+/** Briefly replace the badge with a status symbol, then go back to the count. */
+async function flashBadge(text, color = BADGE_COLOR) {
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(async () => {
+    flashTimer = null;
+    await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR });
+    await refreshBadge();
+  }, FLASH_MS);
+  await Promise.all([
+    chrome.action.setBadgeBackgroundColor({ color }),
+    chrome.action.setBadgeText({ text }),
+  ]);
 }
 
-async function saveCurrentPage(tab) {
-  const result = await storage.get(['readingList', 'showBadge']);
-  const readingList = result.readingList || [];
-  const showBadge = result.showBadge !== false;
-  
-  if (readingList.some(item => item.url === tab.url)) return;
-  
-  readingList.push({
-    url: tab.url,
-    title: tab.title,
-    date: new Date().toISOString()
-  });
-  
-  await storage.set({ readingList });
-  
-  // Show checkmark feedback
-  await extensionUI.updateBadge('✓', THEME.COLORS.light);
-  
-  // Reset badge after delay
-  setTimeout(async () => {
-    const text = showBadge ? readingList.length.toString() : '';
-    await extensionUI.updateBadge(text, THEME.COLORS.light);
-  }, 2000);
+/** The service worker can't read prefers-color-scheme, so the popup stores it for us. */
+async function applyToolbarIcon(isDark) {
+  if (isDark === undefined) {
+    ({ [KEYS.DARK_MODE]: isDark } = await chrome.storage.local.get(KEYS.DARK_MODE));
+  }
+  await chrome.action.setIcon({ path: TOOLBAR_ICONS[isDark ? 'dark' : 'light'] });
 }
 
-// Event listeners
-chrome.runtime.onStartup.addListener(async () => {
-  await handleThemeChange();
-  await updateBadgeCount();
+// Badge text and icon don't survive a browser restart, so restore them.
+async function restoreActionState() {
+  await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR });
+  await Promise.all([applyToolbarIcon(), refreshBadge()]);
+}
+
+chrome.runtime.onInstalled.addListener(restoreActionState);
+chrome.runtime.onStartup.addListener(restoreActionState);
+
+// Every change to the list, from the popup or the shortcut, flows through here.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (KEYS.LIST in changes || KEYS.SHOW_BADGE in changes) refreshBadge();
+  if (KEYS.DARK_MODE in changes) applyToolbarIcon(Boolean(changes[KEYS.DARK_MODE].newValue));
 });
 
-chrome.runtime.onInstalled.addListener(async () => {
-  await handleThemeChange();
-  await updateBadgeCount();
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== 'save-page') return;
+  tab ??= (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+  if (!tab) return;
+  const result = await savePage({ url: tab.url, title: tab.title });
+  await (result === 'invalid' ? flashBadge('✕', ERROR_COLOR) : flashBadge('✓'));
 });
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'themeChanged') {
-    handleThemeChange().then(() => sendResponse({ success: true }));
-    return true;
-  }
-});
-
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === "save-page") {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab) {
-      await saveCurrentPage(tab);
-    }
-  }
-});
-  
