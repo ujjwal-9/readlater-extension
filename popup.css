@@ -50,6 +50,11 @@ picture {
 
 /* ------------------------------------------------------------------ layout */
 
+/* Without this, body's overflow is handed to the viewport and body doesn't clip. */
+html {
+  overflow: hidden;
+}
+
 body {
   position: relative;
   width: 400px;
@@ -378,24 +383,33 @@ body {
 
 /* ---------------------------------------------------------------- settings */
 
-/* Covers everything above the footer, so the footer's links stay usable. */
+/*
+ * Covers everything above the footer, so the footer's links stay usable.
+ * While closed it must be display: none, not just moved off to the right:
+ * Chrome sizes the popup to fit all laid-out content, so an off-screen panel
+ * would double the popup's width.
+ */
 .settings-panel {
   position: absolute;
   inset: 0 0 var(--footer-height) 0;
   z-index: 20;
-  display: flex;
+  display: none;
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-color);
   transform: translateX(100%);
-  visibility: hidden;
-  transition: transform 0.3s ease, visibility 0s linear 0.3s;
+  transition: transform 0.3s ease, display 0.3s allow-discrete;
 }
 
 .settings-panel.open {
+  display: flex;
   transform: translateX(0);
-  visibility: visible;
-  transition: transform 0.3s ease;
+}
+
+@starting-style {
+  .settings-panel.open {
+    transform: translateX(100%);
+  }
 }
 
 .settings-header {
