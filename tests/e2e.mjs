@@ -416,6 +416,25 @@ await test('shortcut save: adds page, flashes ✓/✕, then restores count', asy
   expect(await waitFor(async () => (await badge()) === '5', 3000), `badge after invalid flash ${await badge()}`);
 });
 
+// Chrome sizes the popup to fit all laid-out content, so anything parked
+// off-screen (like a closed settings panel) would widen the popup.
+await test('popup content stays 400px wide; settings still slides in', async () => {
+  const p = await openPopup();
+  const width = () => p.evaluate(() => document.documentElement.scrollWidth);
+  const widths = [await width()];
+  await p.click('#settingsBtn');
+  await sleep(100);
+  const midX = await p.evaluate(() => new DOMMatrix(getComputedStyle(document.getElementById('settingsPanel')).transform).m41);
+  await sleep(400);
+  widths.push(await width());
+  await p.click('#settingsBack');
+  await sleep(500);
+  widths.push(await width());
+  expect(widths.every(w => w === 400), `content widths closed/open/closed: ${widths}`);
+  expect(midX > 0 && midX < 400, `panel not animating (x=${midX} at 100ms)`);
+  expect(!(await isVisible(p, '#settingsPanel')), 'panel visible after closing');
+});
+
 // ------------------------------------------------------------ screenshots
 const shots = [
   ['short', { readingList: ITEMS }, null],
